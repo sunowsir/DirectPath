@@ -2,6 +2,7 @@
 eBPF学习项目：利用ebpf实现国内IP绕过openclash实现快速转发
 
 ## 部署方法
+
     1. 解压openwrt编译好的llvm工具链：`llvm-bpf-21.1.6.Linux-x86_64`
     2. 将代码`tc_direct_accel.c`和编译脚本拷贝到工具链目录中`llvm-bpf-21.1.6.Linux-x86_64/llvm-bpf/`
     3. 执行编译脚本 
