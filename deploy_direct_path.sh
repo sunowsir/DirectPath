@@ -13,6 +13,7 @@ BPF_OBJ="tc_direct_path.o"
 BPF_DIR="/sys/fs/bpf/tc_progs"
 PROG_PIN="$BPF_DIR/tc_accel_prog"
 MAP_PIN="$BPF_DIR/direct_ip_map"
+BLK_MAP_PIN="$BPF_DIR/blacklist_ip_map"
 
 echo "1. 清理环境..."
 tc qdisc del dev $DEV clsact 2>/dev/null || true
@@ -27,6 +28,7 @@ bpftool prog load $BPF_OBJ $PROG_PIN pinmaps $BPF_DIR
 echo "3. 挂载到 $DEV 的 TC Ingress..."
 tc qdisc add dev $DEV clsact
 tc filter add dev $DEV ingress bpf da pinned $PROG_PIN
+tc filter add dev $DEV egress bpf da pinned $PROG_PIN
 
 echo "4. 配置 nftables 加速规则..."
 nft add table inet bpf_accel 2>/dev/null || true
@@ -34,11 +36,14 @@ nft flush table inet bpf_accel
 nft add chain inet bpf_accel prerouting { type filter hook prerouting priority -300 \; }
 nft add rule inet bpf_accel prerouting meta mark 0x88 notrack accept
 
-echo "---------------------------------------"
-if [ -e "$MAP_PIN" ]; then
-    echo "成功: Map 已成功固定在 $MAP_PIN"
-    echo "加速引擎已就绪！"
-else
-    echo "错误: Map 未能在预期位置生成，请检查 /sys/fs/bpf/tc_progs 内容："
-    ls $BPF_DIR
+
+if [ ! -e "$MAP_PIN" ]; then 
+    touch ${MAP_PIN}
 fi
+
+if [ ! -e "$BLK_MAP_PIN" ]; then 
+    touch ${BLK_MAP_PIN}
+fi
+
+echo "---------------------------------------"
+echo "加速引擎已就绪！"

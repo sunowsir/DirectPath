@@ -6,7 +6,6 @@
  * Creation : 2026-01-20 21:39:23
 */
 
-
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
 #include <linux/ip.h>
@@ -14,85 +13,111 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
-/* 直连流量标记 */
 #define DIRECT_MARK 0x88
-
 
 /* 定义 LRU Hash Map (快车道缓存) */
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
-    __uint(max_entries, 1024); // 缓存 1024 个热点 IP
-    __uint(key_size, 4);       // IPv4 地址
-    __uint(value_size, 8);      // 存储最后访问的时间戳
+    __uint(max_entries, 1024);
+    __uint(key_size, 4);
+    __uint(value_size, 8);
 } hotpath_cache SEC(".maps");
 
-/* 定义 Map 时，key 的大小需要包含 prefixlen(4) + IPv4(4) = 8 字节 */
+/* 黑名单 (LPM) */
+struct {
+    __uint(type, BPF_MAP_TYPE_LPM_TRIE);
+    __uint(max_entries, 1024);
+    __uint(key_size, 8);
+    __uint(value_size, 4);
+    __uint(map_flags, BPF_F_NO_PREALLOC);
+} blacklist_ip_map SEC(".maps");
+
+/* 国内 IP 白名单 (LPM) */
 struct {
     __uint(type, BPF_MAP_TYPE_LPM_TRIE);
     __uint(max_entries, 16384);
-    __uint(key_size, 8); 
+    __uint(key_size, 8);
     __uint(value_size, 4);
     __uint(map_flags, BPF_F_NO_PREALLOC);
 } direct_ip_map SEC(".maps");
 
-
-/* 构造 LPM 查找 Key
-   必须严格匹配内核定义的 8 字节结构：4字节前缀 + 4字节IP 
- */
 typedef struct {
     __u32 prefixlen;
     __u32 ipv4;
-} DIM_LPM_key;
+} lpm_key_t;
 
-static __always_inline int tc_direct_path_lookup_mark(struct __sk_buff *skb, struct iphdr *iph) {
-    if (unlikely(NULL == skb) || unlikely(NULL == iph))
-        return TC_ACT_OK;
+/* 私网检查函数 */
+static __always_inline int is_private_ip(__u32 ip) {
+    __u32 host_ip = bpf_ntohl(ip);
+    if ((host_ip & 0xFF000000) == 0x0A000000) return 1; // 10.0.0.0/8
+    if ((host_ip & 0xFFF00000) == 0xAC100000) return 1; // 172.16.0.0/12
+    if ((host_ip & 0xFFFF0000) == 0xC0A80000) return 1; // 192.168.0.0/16
+    return 0;
+}
 
-    __u32 dest_ip = iph->daddr;
-    __u64 now = bpf_ktime_get_ns();
+static __always_inline int do_lookup_map(__u32 *addr, lpm_key_t *key) {
+    if (unlikely(NULL == addr) || unlikely(NULL == key)) return 0;
 
-    /* 先从缓存查找(Hash 查找比 Trie 更快) */
-    if (bpf_map_lookup_elem(&hotpath_cache, &dest_ip)) {
-        /* 命中cache，打上加速标记 */
-        skb->mark = DIRECT_MARK;
-        /* 打印调试信息 (正式使用时可注释) */
-        bpf_trace_printk("Direct path: IP %pI4 hit cache!\n", sizeof("Direct path: IP %pI4 hit cache!\n"), &dest_ip);
-        return TC_ACT_OK;
+    // 3. 检查缓存 
+    if (bpf_map_lookup_elem(&hotpath_cache, addr)) {
+        return 1;
     }
 
-    DIM_LPM_key lpm_key;
-    lpm_key.prefixlen = 32;
-    lpm_key.ipv4 = dest_ip;
+    // 4. 查白名单并更新缓存
+    key->ipv4 = *addr;
+    if (bpf_map_lookup_elem(&direct_ip_map, key)) {
+        bpf_map_update_elem(&hotpath_cache, addr, &(__u64){bpf_ktime_get_ns()}, BPF_ANY);
+        return 1;
+    } 
 
-    /* 查找： 从国内IP库静态大名单中查找 */
-    __u32 *is_direct = bpf_map_lookup_elem(&direct_ip_map, &lpm_key);
-    if (!is_direct) return TC_ACT_OK;
+    return 0;
+}
 
-    /* 加入到缓存中 */
-    bpf_map_update_elem(&hotpath_cache, &dest_ip, &now, BPF_ANY);
-    /* 命中直连名单，打上加速标记 */
-    skb->mark = DIRECT_MARK;
-    /* 打印调试信息 (正式使用时可注释) */
-    bpf_trace_printk("Direct path: IP %pI4 hit!\n", sizeof("Direct path: IP %pI4 hit!\n"), &dest_ip);
+/* 核心查找逻辑：直接操作具体 Map 避免指针丢失上下文 */
+static __always_inline int do_lookup(struct iphdr *iph) {
+    lpm_key_t key = {.prefixlen = 32};
 
-    return TC_ACT_OK;
+    // 1. 过滤纯内网互访
+    if (is_private_ip(iph->saddr) && is_private_ip(iph->daddr)) return 0;
+
+    // 2. 检查黑名单 (源或目的在黑名单则不加速)
+    key.ipv4 = iph->daddr;
+    if (bpf_map_lookup_elem(&blacklist_ip_map, &key)) return 0;
+    key.ipv4 = iph->saddr;
+    if (bpf_map_lookup_elem(&blacklist_ip_map, &key)) return 0;
+
+    if (!is_private_ip(iph->daddr) && do_lookup_map(&(iph->daddr), &key)) {
+        // bpf_trace_printk("Direct path match daddr: %pI4 -> %pI4\n", sizeof("Direct path match daddr: %pI4 -> %pI4\n"), &iph->saddr, &iph->daddr);
+        return 1;
+    }
+
+    if (!is_private_ip(iph->saddr) && do_lookup_map(&(iph->saddr), &key)) {
+        // bpf_trace_printk("Direct path match saddr: %pI4 -> %pI4\n", sizeof("Direct path match daddr: %pI4 -> %pI4\n"), &iph->saddr, &iph->daddr);
+        return 1;
+    }
+
+    return 0;
 }
 
 SEC("classifier")
 int tc_direct_path(struct __sk_buff *skb) {
-    /* 协议解析（仅处理 IPv4） */
     if (skb->protocol != bpf_htons(ETH_P_IP))
         return TC_ACT_OK;
 
     void *data_end = (void *)(long)skb->data_end;
-
     struct ethhdr *eth = (void *)(long)skb->data;
     if ((void *)(eth + 1) > data_end) return TC_ACT_OK;
 
     struct iphdr *iph = (void *)(eth + 1);
     if ((void *)(iph + 1) > data_end) return TC_ACT_OK;
 
-    return tc_direct_path_lookup_mark(skb, iph);
+    if (do_lookup(iph)) {
+        skb->mark = DIRECT_MARK;
+        // 调试打印可按需开启
+        // bpf_trace_printk("Direct path session: %pI4 -> %pI4\n", sizeof("Direct path session: %pI4 -> %pI4\n"), &iph->saddr, &iph->daddr);
+    }
+
+    return TC_ACT_OK;
 }
 
 char _license[] SEC("license") = "GPL";
