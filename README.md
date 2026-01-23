@@ -1,5 +1,5 @@
 # DirectPath 加速引擎
-> 直连流量加速引擎：利用ebpf实现国内IP绕过openclash实现快速转发
+> 直连流量加速引擎：利用ebpf实现国内IP流量快速转发
 
 ## 部署方法
   > 若执`check_cache.sh`发现缓存急速上涨并爆满，大概率是内网的P2P或CSDN服务导致
