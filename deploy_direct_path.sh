@@ -61,6 +61,12 @@ tc filter add dev ${LAN_DEV} egress bpf da pinned "$BPF_DIR/tc_accel_prog"
 tc qdisc add dev ${WAN_DEV} clsact
 tc filter add dev ${WAN_DEV} ingress bpf da pinned "$BPF_DIR/tc_accel_prog"
 
-# ... nftables 逻辑保持不变 ...
+echo "5. 配置 nftables 联动 (Priority -300 确保在 Conntrack 之前)..."
+nft add table inet bpf_accel 2>/dev/null || true
+nft flush table inet bpf_accel
+nft add chain inet bpf_accel prerouting { type filter hook prerouting priority -300 \; }
+# 关键规则：命中 0x88 标记的流量彻底跳过连接跟踪
+nft add rule inet bpf_accel prerouting meta mark 0x88 notrack accept
 
-echo "加速引擎已完美启动！"
+echo "---------------------------------------"
+echo "加速引擎已启动！"
