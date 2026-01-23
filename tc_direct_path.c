@@ -62,7 +62,7 @@ static __always_inline int is_private_ip(__u32 *ip) {
 static __always_inline int do_lookup_map(__u32 *addr) {
     if (unlikely(NULL == addr)) return 0;
 
-    lpm_key_t key = {.ipv4 = *addr, .prefixlen = 32};
+    lpm_key_t key = {.prefixlen = 32, .ipv4 = *addr};
 
     /* 检查黑名单 (源或目的在黑名单则不加速) */
     if (bpf_map_lookup_elem(&blklist_ip_map, &key)) return 0;
