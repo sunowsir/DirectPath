@@ -16,6 +16,7 @@ BPF_DIR="/sys/fs/bpf/tc_progs"
 
 # 具体的 Map 路径
 HOTPATH_PIN="${BPF_DIR}/hotpath_cache"
+PRE_PIN="${BPF_DIR}/pre_cache"
 BLACK_PIN="${BPF_DIR}/blklist_ip_map"
 DIRECT_PIN="${BPF_DIR}/direct_ip_map"
 
@@ -23,6 +24,8 @@ DIRECT_PIN="${BPF_DIR}/direct_ip_map"
 #
 # 缓存大小
 HOTMAP_SIZE=65536
+# 预缓存大小
+PREMAP_SIZE=65536
 # 黑名单大小
 BLACKMAP_SIZE=8192
 # 国内IP白名单大小
@@ -45,6 +48,9 @@ echo "2. 显式创建并固定 Map (确保内核对象先于程序存在)..."
 # 创建 hotpath_cache (LRU_HASH: type 9, key 4B, value 8B, max 1024)
 bpftool map create ${HOTPATH_PIN} type lru_hash key 4 value 8 entries ${HOTMAP_SIZE} name hotpath_cache
 
+# 创建 pre_cache (LRU_HASH: type 9, key 4B, value 12B, max 1024)
+bpftool map create ${PRE_PIN} type lru_hash key 4 value 12 entries ${PREMAP_SIZE} name hotpath_cache
+
 # 创建 blklist_ip_map (LPM_TRIE: type 11, key 8B, value 4B, max 1024, flags 1)
 bpftool map create ${BLACK_PIN} type lpm_trie key 8 value 4 entries ${BLACKMAP_SIZE} name blklist_ip_map flags 1
 
@@ -55,6 +61,7 @@ echo "3. 加载程序并重用已存在的 Maps..."
 # 使用 map name 映射到刚才创建的文件上
 bpftool prog load $BPF_OBJ "${BPF_DIR}/tc_accel_prog" \
     map name hotpath_cache pinned ${HOTPATH_PIN} \
+    map name pre_cache pinned ${PRE_PIN} \
     map name direct_ip_map pinned ${DIRECT_PIN} \
     map name blklist_ip_map pinned ${BLACK_PIN}
 

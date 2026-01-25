@@ -16,16 +16,34 @@
 #define DIRECT_MARK 0x88
 
 #define CACHE_IP_MAP_SIZE       65536
+#define PRE_CACHE_IP_MAP_SIZE   65536
 #define BLKLIST_IP_MAP_SIZE     8192
 #define DIRECT_IP_MAP_SIZE      16384
 
-/* 定义 LRU Hash Map (缓存) */
+/* 总计收发20个包，且距离最开始的数据包的时间超过了 10秒，才被准入到缓存中 */
+#define HOTPKG_NUM              20
+#define HOTPKG_INV_TIME         10000000000ULL
+
+/* 定义 LRU Hash Map 作为缓存 */
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __uint(max_entries, CACHE_IP_MAP_SIZE);
     __uint(key_size, 4);
     __uint(value_size, 8);
 } hotpath_cache SEC(".maps");
+
+typedef struct {
+    __u64 first_seen; // 第一次见到的纳秒时间戳
+    __u32 count;      // 累计包量
+} pre_val_t;
+
+/* 定义 LRU Hash Map 作为预缓存 */
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, PRE_CACHE_IP_MAP_SIZE);
+    __uint(key_size, 4);
+    __uint(value_size, sizeof(pre_val_t)); 
+} pre_cache SEC(".maps");
 
 /* 黑名单 (LPM) */
 struct {
@@ -75,9 +93,29 @@ static __always_inline int do_lookup_map(__u32 *addr) {
         return 1;
     }
 
+    /* 预存区逻辑 */
+    pre_val_t *pv = bpf_map_lookup_elem(&pre_cache, addr);
+    __u64 now = bpf_ktime_get_ns();
+
+   if (pv) {
+        /* 原子操作，包计数递增 */
+        __u32 c = __sync_fetch_and_add(&pv->count, 1);
+        
+        /* 加入缓存，判定标准：见过超过 HOTPKG_NUM 个包，且距离第一次见面已经过了 HOTPKG_INV_TIME 秒 */
+        if (c >= HOTPKG_NUM && ((now - pv->first_seen) > HOTPKG_INV_TIME)) {
+            bpf_map_update_elem(&hotpath_cache, addr, &now, BPF_ANY);
+        }
+
+        /* 只要命中白名单，无论命中白名单还是哪个缓存，当前包都要加速 */
+        return 1; 
+    }
+
     /* 查白名单并更新缓存 */
     if (bpf_map_lookup_elem(&direct_ip_map, &key)) {
-        bpf_map_update_elem(&hotpath_cache, addr, &(__u64){bpf_ktime_get_ns()}, BPF_ANY);
+        // bpf_map_update_elem(&hotpath_cache, addr, &(__u64){bpf_ktime_get_ns()}, BPF_ANY);
+        /* 加入到预缓存 */
+        pre_val_t first = {.first_seen = now, .count = 1};
+        bpf_map_update_elem(&pre_cache, addr, &first, BPF_ANY);
         return 1;
     } 
 
