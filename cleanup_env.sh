@@ -8,7 +8,8 @@
 #
 
 # 定义变量（需与部署脚本保持一致）
-DEV="br-lan"
+LAN_IF="eth1"
+WAN_IF="eth0"
 BPF_DIR="/sys/fs/bpf/tc_progs"
 TABLE_NAME="bpf_accel"
 
@@ -24,10 +25,19 @@ else
 fi
 
 # 2. 移除 TC 挂载点上的 eBPF 程序
-echo "正在从 $DEV 移除 TC 过滤器..."
+echo "正在从 ${LAN_IF} 移除 TC 过滤器..."
 # 清理 clsact qdisc 会自动删除其下的所有 filter (ingress/egress)
-if tc qdisc show dev $DEV | grep -q "clsact"; then
-    tc qdisc del dev $DEV clsact
+if tc qdisc show dev ${LAN_IF} | grep -q "clsact"; then
+    tc qdisc del dev ${LAN_IF} clsact
+    echo "-> TC clsact 已移除。"
+else
+    echo "-> 未发现 TC clsact，跳过。"
+fi
+
+echo "正在从 ${WAN_IF} 移除 TC 过滤器..."
+# 清理 clsact qdisc 会自动删除其下的所有 filter (ingress/egress)
+if tc qdisc show dev ${WAN_IF} | grep -q "clsact"; then
+    tc qdisc del dev ${WAN_IF} clsact
     echo "-> TC clsact 已移除。"
 else
     echo "-> 未发现 TC clsact，跳过。"
@@ -46,6 +56,7 @@ fi
 echo "---------------------------------------"
 echo "验证结果:"
 echo "NFT 表状态: $(nft list table inet $TABLE_NAME 2>&1 || echo '已清理')"
-echo "TC 状态: $(tc filter show dev $DEV ingress 2>&1 | grep "bpf" || echo '已清理')"
+echo "${LAN_IF} TC 状态: $(tc filter show dev ${LAN_IF} ingress 2>&1 | grep "bpf" || echo '已清理')"
+echo "${WAN_IF} TC 状态: $(tc filter show dev ${WAN_IF} ingress 2>&1 | grep "bpf" || echo '已清理')"
 echo "---------------------------------------"
 echo "环境恢复完成！系统现在完全由 OpenClash 原始规则控制。"
