@@ -71,6 +71,9 @@ try:
            if not line or line.startswith('#'):
                continue
             
+           if 'DOMAIN' not in line and 'PROCESS-NAME' not in line:
+               continue
+
            # 兼容 Clash 规则: DOMAIN-SUFFIX,baidu.com 或直接域名
            parts = line.split(',')
            domain = parts[-1].strip()

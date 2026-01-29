@@ -19,6 +19,8 @@ BPF_DIR="/sys/fs/bpf/dns_steer"
 MAP_PIN="${BPF_DIR}/domestic_domains"
 PROG_PIN="${BPF_DIR}/dns_prog"
 
+DOMAIN_MAP_SIZE=10485760
+
 # 必需命令
 readonly REQUIRED_CMDS=(bpftool tc mount umount)
 
@@ -61,7 +63,7 @@ function load_and_mount() {
     # 1. 创建 Map (LPM Trie 必须 flags 1)
     # 使用较短的名字 'dom_domains' 避免 bpftool 截断警告
     bpftool map create "${MAP_PIN}" \
-        type lpm_trie key 68 value 4 entries 1024 \
+        type lpm_trie key 68 value 4 entries ${DOMAIN_MAP_SIZE} \
         name dom_domains flags 1
 
     # 2. 加载程序

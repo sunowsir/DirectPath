@@ -19,7 +19,7 @@
 #define DIRECT_DNS_SERVER_PORT  15301
 
 #define DOMAIN_MAX_LEN          64
-#define DOMAIN_MAP_SIZE         1024
+#define DOMAIN_MAP_SIZE         10485760
 
 typedef struct domain_key {
     __u32 prefixlen;
