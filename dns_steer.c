@@ -34,6 +34,14 @@ struct {
     __uint(map_flags, BPF_F_NO_PREALLOC);
 } domestic_domains SEC(".maps");
 
+/* 私网检查函数 */
+static __always_inline int is_private_ip(__u32 *ip) {
+    if ((bpf_ntohl(*ip) & 0xFF000000) == 0x0A000000) return 1; // 10.0.0.0/8
+    if ((bpf_ntohl(*ip) & 0xFFF00000) == 0xAC100000) return 1; // 172.16.0.0/12
+    if ((bpf_ntohl(*ip) & 0xFFFF0000) == 0xC0A80000) return 1; // 192.168.0.0/16
+    return 0;
+}
+
 SEC("classifier")
 int dns_port_steer(struct __sk_buff *skb) {
     void *data_end = (void *)(long)skb->data_end;
@@ -49,7 +57,7 @@ int dns_port_steer(struct __sk_buff *skb) {
     struct udphdr *udp = (void *)ip + sizeof(*ip);
     if ((void *)udp + sizeof(*udp) > data_end) return TC_ACT_OK;
 
-    if (udp->dest == bpf_htons(NORMAOL_DNS_PORT)) {
+    if (is_private_ip(&(ip->daddr)) && udp->dest == bpf_htons(NORMAOL_DNS_PORT)) {
         unsigned char *dns_hdr = (void *)udp + sizeof(*udp);
         if (unlikely((void *)dns_hdr + 12 > data_end)) return TC_ACT_OK;
 
@@ -72,13 +80,13 @@ int dns_port_steer(struct __sk_buff *skb) {
             ptr++;
         }
 
-        if (unlikely(cp_idx == 0 || cp_idx >= DOMAIN_MAX_LEN)) return TC_ACT_OK;
-        bpf_probe_read_kernel(key.domain, sizeof(key.domain), &(key.domain[cp_idx]));
-
         if (unlikely(NULL == ptr || NULL == cursor)) return TC_ACT_OK;
         __u32 len = (__u32)((void *)ptr - (void *)cursor);
         if (unlikely(len == 0 || len > DOMAIN_MAX_LEN)) return TC_ACT_OK;
         key.prefixlen = (len & (DOMAIN_MAX_LEN - 1)) * 8;
+
+        if (unlikely(cp_idx == 0 || cp_idx >= DOMAIN_MAX_LEN)) return TC_ACT_OK;
+        __builtin_memmove(key.domain, &(key.domain[cp_idx]), sizeof(key.domain[cp_idx]));
 
         // 4. 匹配
         __u32 *val = bpf_map_lookup_elem(&domestic_domains, &key);
@@ -103,7 +111,7 @@ int dns_port_steer(struct __sk_buff *skb) {
     } 
 
     // 回程包
-    else if (udp->source == bpf_htons(DIRECT_DNS_SERVER_PORT)) {
+    else if (is_private_ip(&(ip->saddr)) && udp->source == bpf_htons(DIRECT_DNS_SERVER_PORT)) {
         __u16 check_val = udp->check;
         __be16 old_sport = udp->source;
         __be16 new_sport = bpf_htons(NORMAOL_DNS_PORT);
