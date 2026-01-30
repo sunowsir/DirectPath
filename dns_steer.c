@@ -34,6 +34,13 @@ struct {
     __uint(map_flags, BPF_F_NO_PREALLOC);
 } domestic_domains SEC(".maps");
 
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, __u32);
+    __type(value, domain_key_t);
+} domestic_domains_key SEC(".maps");
+
 /* 私网检查函数 */
 static __always_inline int is_private_ip(__u32 *ip) {
     if ((bpf_ntohl(*ip) & 0xFF000000) == 0x0A000000) return 1; // 10.0.0.0/8
@@ -64,50 +71,56 @@ int dns_port_steer(struct __sk_buff *skb) {
         unsigned char *cursor = dns_hdr + 12;
         unsigned char *ptr = cursor;
 
-        domain_key_t key = {0};
+        __u32 kkey = 0;
+        domain_key_t *key = bpf_map_lookup_elem(&domestic_domains_key, &kkey);
+        if (unlikely(!key)) return TC_ACT_OK;
+        __builtin_memset(key, 0, sizeof(domain_key_t));
 
-        // 1. 计算长度（这个循环通常编译器能处理，因为 ptr 是 pkt 指针）
-        __u32 i = 0;
-        __u32 cp_idx = 0;
+        bpf_probe_read_kernel_str(key->domain, sizeof(key->domain), cursor);
+
+        __u32 len = 0;
         #pragma unroll
-        for (i = 0; i < DOMAIN_MAX_LEN; i++) {
+        for (; len < DOMAIN_MAX_LEN; len++) {
             if ((void *)ptr + 1 > data_end) break;
-            if (*ptr== 0) break;
-            cp_idx = DOMAIN_MAX_LEN - i - 1;
-            if (likely(cp_idx >= 0 && cp_idx < DOMAIN_MAX_LEN)) {
-                key.domain[cp_idx] = *ptr;
-            }
+            if (*ptr == 0) break;
+            key->domain[len] = *ptr;
             ptr++;
         }
 
-        if (unlikely(NULL == ptr || NULL == cursor)) return TC_ACT_OK;
-        __u32 len = (__u32)((void *)ptr - (void *)cursor);
         if (unlikely(len == 0 || len > DOMAIN_MAX_LEN)) return TC_ACT_OK;
-        key.prefixlen = (len & (DOMAIN_MAX_LEN - 1)) * 8;
+        key->prefixlen = (len & (DOMAIN_MAX_LEN - 1)) * 8;
 
-        if (unlikely(cp_idx == 0 || cp_idx >= DOMAIN_MAX_LEN)) return TC_ACT_OK;
-        __builtin_memmove(key.domain, &(key.domain[cp_idx]), sizeof(key.domain[cp_idx]));
+        #pragma unroll
+        for (int i = 0; i < DOMAIN_MAX_LEN / 2; i++) {
+            int j = len - 1 - i;
+            if (i >= j || j >= DOMAIN_MAX_LEN) break;
+        
+            char t = key->domain[i];
+            key->domain[i] = key->domain[j];
+            key->domain[j] = t;
+        }
 
         // 4. 匹配
-        __u32 *val = bpf_map_lookup_elem(&domestic_domains, &key);
+        __u32 *val = bpf_map_lookup_elem(&domestic_domains, key);
         if (unlikely(!val)) return TC_ACT_OK;
 
         __u16 check_val = udp->check;
-        __be16 old_dport = udp->dest;
-        __be16 new_dport = bpf_htons(DIRECT_DNS_SERVER_PORT);
 
         // 1. 修改端口
         // 使用固定偏移量，避免指针计算误差
-        __u32 dport_off = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, dest);
-        bpf_skb_store_bytes(skb, dport_off, &new_dport, sizeof(new_dport), 0);
+        __be16 old_dport = udp->dest;
+        __be16 new_dport = bpf_htons(DIRECT_DNS_SERVER_PORT);
+        __u32 offset = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, dest);
+        bpf_skb_store_bytes(skb, offset, &new_dport, sizeof(new_dport), 0);
 
         // 增量修正校验和
         if (unlikely(check_val != 0)) {
-            __u32 csum_off = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, check);
-            bpf_l4_csum_replace(skb, csum_off, old_dport, new_dport, sizeof(new_dport));
+            offset = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, check);
+            bpf_l4_csum_replace(skb, offset, old_dport, new_dport, sizeof(new_dport));
         }
 
-        // bpf_printk("Ingress %s AFTER: %d -> %d\n", key.domain, bpf_ntohs(old_dport), bpf_ntohs(new_dport));
+        bpf_trace_printk("DNS Ingress Direct path session: %pI4 -> %pI4\n", sizeof("Direct path session: %pI4 -> %pI4\n"), &ip->saddr, &ip->daddr);
+        // bpf_printk("Ingress %s AFTER: %d -> %d\n", key->domain, bpf_ntohs(old_dport), new_dport);
     } 
 
     // 回程包
@@ -118,14 +131,15 @@ int dns_port_steer(struct __sk_buff *skb) {
 
         // 1. 修改端口
         // 使用固定偏移量，避免指针计算误差
-        __u32 sport_off = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, source);
-        bpf_skb_store_bytes(skb, sport_off, &new_sport, sizeof(new_sport), 0);
+        __u32 offset = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, source);
+        bpf_skb_store_bytes(skb, offset, &new_sport, sizeof(new_sport), 0);
 
         if (unlikely(check_val != 0)) {
-            __u32 csum_off  = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, check);
-            bpf_l4_csum_replace(skb, csum_off, old_sport, new_sport, sizeof(new_sport));
+            offset = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, check);
+            bpf_l4_csum_replace(skb, offset, old_sport, new_sport, sizeof(new_sport));
         }
 
+        bpf_trace_printk("DNS Egress Direct path session: %pI4 -> %pI4\n", sizeof("Direct path session: %pI4 -> %pI4\n"), &ip->saddr, &ip->daddr);
         // bpf_printk("Egress AFTER: %d -> %d\n", bpf_ntohs(old_sport), bpf_ntohs(new_sport));
     }
 
