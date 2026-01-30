@@ -49,20 +49,13 @@ static __always_inline int is_private_ip(__u32 *ip) {
     return 0;
 }
 
-SEC("classifier")
-int dns_port_steer(struct __sk_buff *skb) {
-    void *data_end = (void *)(long)skb->data_end;
-    void *data = (void *)(long)skb->data;
+static __always_inline int do_lookup(struct __sk_buff *skb, struct iphdr *ip, void *data_end) {
+    if (unlikely(NULL == skb || NULL == ip || NULL == data_end)) return TC_ACT_OK;
 
-    // --- 解析头部 (省略重复代码，确保与原版一致) ---
-    struct ethhdr *eth = data;
-    if ((void *)eth + sizeof(*eth) > data_end) return TC_ACT_OK;
-    if (eth->h_proto != bpf_htons(ETH_P_IP)) return TC_ACT_OK;
-    struct iphdr *ip = data + sizeof(*eth);
-    if ((void *)ip + sizeof(*ip) > data_end) return TC_ACT_OK;
-    if (ip->protocol != IPPROTO_UDP) return TC_ACT_OK;
+
     struct udphdr *udp = (void *)ip + sizeof(*ip);
-    if ((void *)udp + sizeof(*udp) > data_end) return TC_ACT_OK;
+    if (unlikely((void *)udp + sizeof(*udp) > data_end)) return TC_ACT_OK;
+    if (unlikely(NULL == udp)) return TC_ACT_OK;
 
     if (is_private_ip(&(ip->daddr)) && udp->dest == bpf_htons(NORMAOL_DNS_PORT)) {
         unsigned char *dns_hdr = (void *)udp + sizeof(*udp);
@@ -119,7 +112,7 @@ int dns_port_steer(struct __sk_buff *skb) {
             bpf_l4_csum_replace(skb, offset, old_dport, new_dport, sizeof(new_dport));
         }
 
-        bpf_trace_printk("DNS Ingress Direct path session: %pI4 -> %pI4\n", sizeof("Direct path session: %pI4 -> %pI4\n"), &ip->saddr, &ip->daddr);
+        bpf_printk("DNS Ingress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
         // bpf_printk("Ingress %s AFTER: %d -> %d\n", key->domain, bpf_ntohs(old_dport), new_dport);
     } 
 
@@ -139,11 +132,31 @@ int dns_port_steer(struct __sk_buff *skb) {
             bpf_l4_csum_replace(skb, offset, old_sport, new_sport, sizeof(new_sport));
         }
 
-        bpf_trace_printk("DNS Egress Direct path session: %pI4 -> %pI4\n", sizeof("Direct path session: %pI4 -> %pI4\n"), &ip->saddr, &ip->daddr);
+        bpf_printk("DNS Egress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
         // bpf_printk("Egress AFTER: %d -> %d\n", bpf_ntohs(old_sport), bpf_ntohs(new_sport));
     }
 
     return TC_ACT_OK;
+}
+
+SEC("classifier")
+int dns_port_steer(struct __sk_buff *skb) {
+    void *data_end = (void *)(long)skb->data_end;
+    void *data = (void *)(long)skb->data;
+
+    // --- 解析头部 (省略重复代码，确保与原版一致) ---
+    struct ethhdr *eth = data;
+    if (unlikely((void *)eth + sizeof(*eth) > data_end)) return TC_ACT_OK;
+    if (unlikely(eth->h_proto != bpf_htons(ETH_P_IP))) return TC_ACT_OK;
+
+    struct iphdr *ip = data + sizeof(*eth);
+    if (unlikely((void *)ip + sizeof(*ip) > data_end)) return TC_ACT_OK;
+    if (unlikely(ip->protocol != IPPROTO_UDP)) return TC_ACT_OK;
+
+    if (!is_private_ip(&(ip->saddr)) || !is_private_ip(&(ip->daddr)))
+        return TC_ACT_OK;
+
+    return do_lookup(skb, ip, data_end);
 }
 
 char _license[] SEC("license") = "GPL";

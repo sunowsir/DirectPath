@@ -11,7 +11,7 @@
 set -euo pipefail
 
 # --- 配置参数 ---
-LAN_IF="br-lan"             # 你的内网网桥
+LAN_IF="eth1"             # 你的内网网桥
 BPF_OBJ="dns_steer.o"       # 编译生成的对象文件
 BPF_DIR="/sys/fs/bpf/dns_steer"
 
