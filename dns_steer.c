@@ -112,7 +112,7 @@ static __always_inline int do_lookup(struct __sk_buff *skb, struct iphdr *ip, vo
             bpf_l4_csum_replace(skb, offset, old_dport, new_dport, sizeof(new_dport));
         }
 
-        bpf_printk("DNS Ingress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
+        // bpf_printk("DNS Ingress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
         // bpf_printk("Ingress %s AFTER: %d -> %d\n", key->domain, bpf_ntohs(old_dport), new_dport);
     } 
 
@@ -132,7 +132,7 @@ static __always_inline int do_lookup(struct __sk_buff *skb, struct iphdr *ip, vo
             bpf_l4_csum_replace(skb, offset, old_sport, new_sport, sizeof(new_sport));
         }
 
-        bpf_printk("DNS Egress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
+        // bpf_printk("DNS Egress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
         // bpf_printk("Egress AFTER: %d -> %d\n", bpf_ntohs(old_sport), bpf_ntohs(new_sport));
     }
 
