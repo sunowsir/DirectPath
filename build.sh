@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 1. 定义 SDK 路径
-export BPF_SDK=/home/openwrt/llvm-bpf-21.1.6.Linux-x86_64/llvm-bpf
+export BPF_SDK=/home/openwrt//llvm-bpf
 
 # 2. 定义 OpenWrt 平台头文件路径 (关键！)
 # 注意：请根据你的实际 staging_dir 名字微调（x86_64_musl 还是其他）

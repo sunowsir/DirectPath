@@ -15,8 +15,6 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
-#define DNS_DIRECT_MARK 0x89
-
 #define NORMAOL_DNS_PORT        53
 #define DIRECT_DNS_SERVER_PORT  15301
 
@@ -25,8 +23,8 @@
 
 typedef struct domain_key {
     __u32 prefixlen;
-    char domain[DOMAIN_MAX_LEN];
-} domain_key_t;
+    unsigned char domain[DOMAIN_MAX_LEN];
+} __attribute__((packed)) domain_key_t;
 
 struct {
     __uint(type, BPF_MAP_TYPE_LPM_TRIE);
@@ -34,56 +32,64 @@ struct {
     __type(key, domain_key_t);
     __type(value, __u32);
     __uint(map_flags, BPF_F_NO_PREALLOC);
-} domestic_domains SEC(".maps");
+    __uint(pinning, LIBBPF_PIN_BY_NAME);
+} domain_map SEC(".maps");
 
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);
     __uint(max_entries, 1);
     __type(key, __u32);
     __type(value, domain_key_t);
-} domestic_domains_key SEC(".maps");
+} domain_map_key SEC(".maps");
+
+/* 增量更新 UDP 校验和 (RFC 1624) */
+static __always_inline void udp_update_csum(__u16 old_val, __u16 new_val, __u16 *csum) {
+    if (0 == *csum) return;
+    __u32 res = *csum + old_val + (__u16)~new_val;
+    *csum = (__u16)(res + (res >> 16));
+}
 
 /* 私网检查函数 */
-static __always_inline int is_private_ip(__u32 *ip) {
-    if ((bpf_ntohl(*ip) & 0xFF000000) == 0x0A000000) return 1; // 10.0.0.0/8
-    if ((bpf_ntohl(*ip) & 0xFFF00000) == 0xAC100000) return 1; // 172.16.0.0/12
-    if ((bpf_ntohl(*ip) & 0xFFFF0000) == 0xC0A80000) return 1; // 192.168.0.0/16
+static __always_inline int is_private_ip(__u32 ip) {
+    if ((bpf_ntohl(ip) & 0xFF000000) == 0x7F000000) return 1; // 127.0.0.0/8
+    if ((bpf_ntohl(ip) & 0xFF000000) == 0x0A000000) return 1; // 10.0.0.0/8
+    if ((bpf_ntohl(ip) & 0xFFF00000) == 0xAC100000) return 1; // 172.16.0.0/12
+    if ((bpf_ntohl(ip) & 0xFFFF0000) == 0xC0A80000) return 1; // 192.168.0.0/16
     return 0;
 }
 
-static __always_inline int do_lookup(struct __sk_buff *skb, struct iphdr *ip, void *data_end) {
-    if (unlikely(NULL == skb || NULL == ip || NULL == data_end)) return TC_ACT_OK;
-    if (skb->mark & bpf_htonl(DNS_DIRECT_MARK)) return TC_ACT_OK;
-
+static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void *data_end) {
+    if (unlikely(NULL == ctx || NULL == ip || NULL == data_end)) return XDP_PASS;
 
     struct udphdr *udp = (void *)ip + sizeof(*ip);
-    if (unlikely((void *)udp + sizeof(*udp) > data_end)) return TC_ACT_OK;
-    if (unlikely(NULL == udp)) return TC_ACT_OK;
+    if (unlikely(NULL == udp)) return XDP_PASS;
+    if (unlikely((void *)(udp + 1) > data_end)) return XDP_PASS;
 
-    if (is_private_ip(&(ip->daddr)) && udp->dest == bpf_htons(NORMAOL_DNS_PORT)) {
-        unsigned char *dns_hdr = (void *)udp + sizeof(*udp);
-        if (unlikely((void *)dns_hdr + 12 > data_end)) return TC_ACT_OK;
+    if (bpf_htons(NORMAOL_DNS_PORT) == udp->dest) {
+
+        unsigned char *dns_hdr = (void *)(udp + 1);
+        if ((void *)(dns_hdr + 12) > data_end) return XDP_PASS;
 
         unsigned char *cursor = dns_hdr + 12;
         unsigned char *ptr = cursor;
 
         __u32 kkey = 0;
-        domain_key_t *key = bpf_map_lookup_elem(&domestic_domains_key, &kkey);
-        if (unlikely(!key)) return TC_ACT_OK;
+        domain_key_t *key = bpf_map_lookup_elem(&domain_map_key, &kkey);
+        if (unlikely(!key)) return XDP_PASS;
         __builtin_memset(key, 0, sizeof(domain_key_t));
 
-        bpf_probe_read_kernel_str(key->domain, sizeof(key->domain), cursor);
+        // bpf_probe_read_kernel_str(key->domain, sizeof(key->domain), cursor);
 
         __u32 len = 0;
         #pragma unroll
         for (; len < DOMAIN_MAX_LEN; len++) {
             if ((void *)ptr + 1 > data_end) break;
-            if (*ptr == 0) break;
+            if ((*ptr == 0 || (*ptr == ' '))) break;
             key->domain[len] = *ptr;
             ptr++;
         }
 
-        if (unlikely(len == 0 || len > DOMAIN_MAX_LEN)) return TC_ACT_OK;
+        if (unlikely(len == 0 || len > DOMAIN_MAX_LEN)) return XDP_PASS;
         key->prefixlen = (len & (DOMAIN_MAX_LEN - 1)) * 8;
 
         #pragma unroll
@@ -97,73 +103,56 @@ static __always_inline int do_lookup(struct __sk_buff *skb, struct iphdr *ip, vo
         }
 
         // 4. 匹配
-        __u32 *val = bpf_map_lookup_elem(&domestic_domains, key);
-        if (unlikely(!val)) return TC_ACT_OK;
+        __u32 *val = bpf_map_lookup_elem(&domain_map, key);
+            if (unlikely(!val)) {
+
+            bpf_printk("key->prefixlen: [%02x]", key->prefixlen);
+            #pragma unroll
+            for (int i = 0; i < 16; i++) {
+                bpf_printk("key->domain[%d]: [%02x]", i, key->domain[i]);
+            }
+            bpf_printk("DNS [%s][%s][%d] Direct Receive session: %pI4:%d -> %pI4:%d\n", 
+                cursor, key->domain, key->prefixlen, 
+                &ip->saddr, bpf_ntohs(udp->source), &ip->daddr, bpf_ntohs(udp->dest));
+
+            return XDP_PASS;
+        }
 
         __u16 check_val = udp->check;
 
-        // 1. 修改端口
-        // 使用固定偏移量，避免指针计算误差
+        // 执行劫持
         __be16 old_dport = udp->dest;
         __be16 new_dport = bpf_htons(DIRECT_DNS_SERVER_PORT);
-        __u32 offset = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, dest);
-        bpf_skb_store_bytes(skb, offset, &new_dport, sizeof(new_dport), 0);
+        udp->dest = new_dport;
+        udp_update_csum(old_dport, new_dport, &udp->check);
 
-        // 增量修正校验和
-        if (unlikely(check_val != 0)) {
-            offset = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, check);
-            bpf_l4_csum_replace(skb, offset, old_dport, new_dport, sizeof(new_dport));
-        }
-
-        skb->mark |= bpf_htonl(DNS_DIRECT_MARK);
-
-        bpf_printk("DNS Ingress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
-        bpf_printk("Ingress %s AFTER: %d -> %d\n", key->domain, bpf_ntohs(old_dport), new_dport);
+        // bpf_printk("DNS Ingress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
+        // bpf_printk("Ingress [%s][%s] AFTER: %d -> %d\n", 
+        //     cursor, key->domain, bpf_ntohs(old_dport), bpf_ntohs(new_dport));
     } 
 
-    // 回程包
-    else if (is_private_ip(&(ip->saddr)) && udp->source == bpf_htons(DIRECT_DNS_SERVER_PORT)) {
-        __u16 check_val = udp->check;
-        __be16 old_sport = udp->source;
-        __be16 new_sport = bpf_htons(NORMAOL_DNS_PORT);
-
-        // 1. 修改端口
-        // 使用固定偏移量，避免指针计算误差
-        __u32 offset = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, source);
-        bpf_skb_store_bytes(skb, offset, &new_sport, sizeof(new_sport), 0);
-
-        if (unlikely(check_val != 0)) {
-            offset = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, check);
-            bpf_l4_csum_replace(skb, offset, old_sport, new_sport, sizeof(new_sport));
-        }
-
-        skb->mark |= bpf_htonl(DNS_DIRECT_MARK);
-
-        bpf_printk("DNS Egress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
-        bpf_printk("Egress AFTER: %d -> %d\n", bpf_ntohs(old_sport), bpf_ntohs(new_sport));
-    }
-
-    return TC_ACT_OK;
+    return XDP_PASS;
 }
 
-SEC("classifier")
-int dns_port_steer(struct __sk_buff *skb) {
-    void *data_end = (void *)(long)skb->data_end;
-    void *data = (void *)(long)skb->data;
+SEC("xdp")
+int dns_port_steer(struct xdp_md *ctx) {
+    void *data_end = (void *)(long)ctx->data_end;
+    void *data = (void *)(long)ctx->data;
 
-    // --- 解析头部 (省略重复代码，确保与原版一致) ---
+    // --- 解析头部  ---
     struct ethhdr *eth = data;
-    if (unlikely((void *)eth + sizeof(*eth) > data_end)) return TC_ACT_OK;
-    if (unlikely(eth->h_proto != bpf_htons(ETH_P_IP))) return TC_ACT_OK;
+    if ((void *)(eth + 1) > data_end) return XDP_PASS;
+    if (eth->h_proto != bpf_htons(ETH_P_IP)) return XDP_PASS;
 
-    struct iphdr *ip = data + sizeof(*eth);
-    if (unlikely((void *)ip + sizeof(*ip) > data_end)) return TC_ACT_OK;
-    if (unlikely(ip->protocol != IPPROTO_UDP)) return TC_ACT_OK;
+    struct iphdr *ip = data + sizeof(struct ethhdr);
+    if ((void *)(ip + 1) > data_end) return XDP_PASS;
+    if (ip->protocol != IPPROTO_UDP) return XDP_PASS;
 
-    if (!is_private_ip(&(ip->saddr)) || !is_private_ip(&(ip->daddr)))
-        return TC_ACT_OK;
+    /* 如果源地址不是私网地址或者目的地址不是私网地址，则不予处理 */
+    if (!is_private_ip(ip->saddr) || !is_private_ip(ip->daddr))
+        return XDP_PASS;
 
-    return do_lookup(skb, ip, data_end);
+    return do_lookup(ctx, ip, data_end);
 }
 
 char _license[] SEC("license") = "GPL";

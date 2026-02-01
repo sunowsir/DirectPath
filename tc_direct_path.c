@@ -6,12 +6,14 @@
  * Creation : 2026-01-20 21:39:23
 */
 
-#include <linux/bpf.h>
-#include <linux/if_ether.h>
 #include <linux/ip.h>
+#include <linux/in.h>
+#include <linux/udp.h>
+#include <linux/bpf.h>
 #include <linux/pkt_cls.h>
-#include <bpf/bpf_helpers.h>
+#include <linux/if_ether.h>
 #include <bpf/bpf_endian.h>
+#include <bpf/bpf_helpers.h>
 
 #define DIRECT_MARK 0x88
 
@@ -23,6 +25,12 @@
 /* 总计收发20个包，且距离最开始的数据包的时间超过了 10秒，才被准入到缓存中 */
 #define HOTPKG_NUM              20
 #define HOTPKG_INV_TIME         10000000000ULL
+
+#define NORMAOL_DNS_PORT        53
+#define DIRECT_DNS_SERVER_PORT  15301
+
+#define DOMAIN_MAX_LEN          64
+#define DOMAIN_MAP_SIZE         10485760
 
 /* 定义 LRU Hash Map 作为缓存 */
 struct {
@@ -69,10 +77,11 @@ struct {
 } direct_ip_map SEC(".maps");
 
 /* 私网检查函数 */
-static __always_inline int is_private_ip(__u32 *ip) {
-    if ((bpf_ntohl(*ip) & 0xFF000000) == 0x0A000000) return 1; // 10.0.0.0/8
-    if ((bpf_ntohl(*ip) & 0xFFF00000) == 0xAC100000) return 1; // 172.16.0.0/12
-    if ((bpf_ntohl(*ip) & 0xFFFF0000) == 0xC0A80000) return 1; // 192.168.0.0/16
+static __always_inline int is_private_ip(__u32 ip) {
+    if ((bpf_ntohl(ip) & 0xFF000000) == 0x7F000000) return 1; // 127.0.0.0/8
+    if ((bpf_ntohl(ip) & 0xFF000000) == 0x0A000000) return 1; // 10.0.0.0/8
+    if ((bpf_ntohl(ip) & 0xFFF00000) == 0xAC100000) return 1; // 172.16.0.0/12
+    if ((bpf_ntohl(ip) & 0xFFFF0000) == 0xC0A80000) return 1; // 192.168.0.0/16
     return 0;
 }
 
@@ -86,7 +95,7 @@ static __always_inline int do_lookup_map(__u32 *addr) {
     if (bpf_map_lookup_elem(&blklist_ip_map, &key)) return 0;
 
     /* 查缓存一级白名单表之前检查地址是否是私网地址是为了防止缓存或国内IP白名单中混入私网地址 */
-    if (is_private_ip(addr)) return 0;
+    if (is_private_ip(*addr)) return 0;
 
     /* 检查缓存  */
     if (bpf_map_lookup_elem(&hotpath_cache, addr)) {
@@ -128,7 +137,7 @@ static __always_inline int do_lookup(struct iphdr *iph) {
     if (unlikely(NULL == iph)) return 0;
 
     /* 过滤纯内网互访 */
-    if (is_private_ip(&(iph->saddr)) && is_private_ip(&(iph->daddr))) return 0;
+    if (is_private_ip(iph->saddr) && is_private_ip(iph->daddr)) return 0;
 
     /* 查询目的IP */
     if (do_lookup_map(&(iph->daddr))) {
@@ -143,6 +152,42 @@ static __always_inline int do_lookup(struct iphdr *iph) {
     }
 
     return 0;
+}
+
+static __always_inline int do_lookup_dns(struct __sk_buff *skb, struct iphdr *ip, void *data_end) {
+    if (unlikely(NULL == skb || NULL == ip || NULL == data_end)) return TC_ACT_OK;
+
+    if (!is_private_ip(ip->saddr) || !is_private_ip(ip->daddr)) {
+        return TC_ACT_OK;
+    }
+
+    if (unlikely(ip->protocol != IPPROTO_UDP)) return TC_ACT_OK;
+
+    struct udphdr *udp = (void *)ip + sizeof(*ip);
+    if (unlikely((void *)udp + sizeof(*udp) > data_end)) return TC_ACT_OK;
+    if (unlikely(NULL == udp)) return TC_ACT_OK;
+
+    if (udp->source != bpf_htons(DIRECT_DNS_SERVER_PORT)) return TC_ACT_OK;
+
+    // 回程包
+    __u16 check_val = udp->check;
+    __be16 old_sport = udp->source;
+    __be16 new_sport = bpf_htons(NORMAOL_DNS_PORT);
+
+    // 1. 修改端口
+    __u32 offset = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, source);
+    bpf_skb_store_bytes(skb, offset, &new_sport, sizeof(new_sport), 0);
+
+    if (unlikely(check_val != 0)) {
+        offset = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, check);
+        bpf_l4_csum_replace(skb, offset, old_sport, new_sport, sizeof(new_sport));
+    }
+
+    // 调试打印可按需开启
+    // bpf_printk("DNS Egress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
+    // bpf_printk("Egress AFTER: %d -> %d\n", bpf_ntohs(old_sport), bpf_ntohs(new_sport));
+
+    return TC_ACT_OK;
 }
 
 SEC("classifier")
@@ -164,6 +209,8 @@ int tc_direct_path(struct __sk_buff *skb) {
         // 调试打印可按需开启
         // bpf_trace_printk("Direct path session: %pI4 -> %pI4\n", sizeof("Direct path session: %pI4 -> %pI4\n"), &iph->saddr, &iph->daddr);
     }
+
+    do_lookup_dns(skb, iph, data_end);
 
     return TC_ACT_OK;
 }

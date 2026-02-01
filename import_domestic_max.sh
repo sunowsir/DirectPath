@@ -12,7 +12,7 @@ set -euo pipefail
 
 # --- 配置 ---
 RULE_FILE="/etc/openclash/rule_provider/ChinaMax.yml"
-MAP_PATH="/sys/fs/bpf/dns_steer/domestic_domains"
+MAP_PATH="/sys/fs/bpf/dns_steer/domain_map"
 BATCH_CHUNK_SIZE=10000
 MAX_LEN=64
 
