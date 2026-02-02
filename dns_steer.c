@@ -19,6 +19,8 @@
 #define DIRECT_DNS_SERVER_PORT  15301
 
 #define DOMAIN_MAX_LEN          64
+#define DNS_LABEL_MAX_LEN       63
+
 #define DOMAIN_MAP_SIZE         10485760
 
 typedef struct domain_key {
@@ -58,6 +60,15 @@ static __always_inline int is_private_ip(__u32 ip) {
     return 0;
 }
 
+/* 域名字符合法性检查 */
+static __always_inline int is_valid_dns_char(unsigned char c) {
+    if (c >= '0' && c <= '9') return 1;
+    if (c >= 'a' && c <= 'z') return 1;
+    if (c >= 'A' && c <= 'Z') return 1;
+    if ('-' == c || '_' == c) return 1;
+    return 0;
+}
+
 static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void *data_end) {
     if (unlikely(NULL == ctx || NULL == ip || NULL == data_end)) return XDP_PASS;
 
@@ -68,10 +79,17 @@ static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void 
     if (bpf_htons(NORMAOL_DNS_PORT) == udp->dest) {
 
         unsigned char *dns_hdr = (void *)(udp + 1);
-        if ((void *)(dns_hdr + 12) > data_end) return XDP_PASS;
+ 
+        // 1. 检查数据包长度是否至少够 DNS Header + 最短域名(1字节长度+0字节结尾)
+        if ((void *)dns_hdr + 14 > data_end) return XDP_PASS;
+        
+        // 2. 靠谱校验：检查查询数量 (QDCOUNT)
+        // 通常我们只处理 1 个查询的包。QDCOUNT 是 Header 的第 5-6 字节
+        __u16 qdcount = bpf_ntohs(*(__u16 *)((void *)dns_hdr + 4));
+        if (qdcount != 1) return XDP_PASS; // 如果不是1个查询，这种写死偏移的逻辑就不保险，直接放行
 
+        if ((void *)(dns_hdr + 12) > data_end) return XDP_PASS;
         unsigned char *cursor = dns_hdr + 12;
-        unsigned char *ptr = cursor;
 
         __u32 kkey = 0;
         domain_key_t *key = bpf_map_lookup_elem(&domain_map_key, &kkey);
@@ -81,11 +99,40 @@ static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void 
         // bpf_probe_read_kernel_str(key->domain, sizeof(key->domain), cursor);
 
         __u32 len = 0;
+        unsigned char *ptr = cursor;
+        __u8 remaining_label_len = 0;
         #pragma unroll
-        for (; len < DOMAIN_MAX_LEN; len++) {
+        for (int i = 0; i < DOMAIN_MAX_LEN; i++) {
             if ((void *)ptr + 1 > data_end) break;
-            if ((*ptr == 0 || (*ptr == ' '))) break;
-            key->domain[len] = *ptr;
+            if (0 == *ptr) break;
+
+            if (0 == remaining_label_len) {
+                if (*ptr > DNS_LABEL_MAX_LEN) {
+                    // bpf_printk("invalid label len [%s][%s][%02x] Direct Receive session: %pI4:%d -> %pI4:%d\n", 
+                    //     cursor, key->domain, *ptr, 
+                    //     &ip->saddr, bpf_ntohs(udp->source), &ip->daddr, bpf_ntohs(udp->dest));
+
+                    ptr++;
+                    continue;
+                }
+
+                remaining_label_len = *ptr;
+                key->domain[len++] = *ptr;
+            } else {
+                if (!is_valid_dns_char(*ptr)) {
+                    // bpf_printk("invalid char [%s][%s][%02x] Direct Receive session: %pI4:%d -> %pI4:%d\n", 
+                    //     cursor, key->domain, *ptr, 
+                    //     &ip->saddr, bpf_ntohs(udp->source), &ip->daddr, bpf_ntohs(udp->dest));
+
+                    ptr++;
+                    remaining_label_len = 0;
+                    continue;
+                }
+
+                key->domain[len++] = *ptr;
+                remaining_label_len--;
+            }
+
             ptr++;
         }
 
@@ -104,16 +151,18 @@ static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void 
 
         // 4. 匹配
         __u32 *val = bpf_map_lookup_elem(&domain_map, key);
-            if (unlikely(!val)) {
+        if (unlikely(!val)) {
 
-            // bpf_printk("key->prefixlen: [%02x]", key->prefixlen);
-            // #pragma unroll
-            // for (int i = 0; i < 16; i++) {
-            //     bpf_printk("key->domain[%d]: [%02x]", i, key->domain[i]);
-            // }
-            // bpf_printk("DNS [%s][%s][%d] Direct Receive session: %pI4:%d -> %pI4:%d\n", 
-            //     cursor, key->domain, key->prefixlen, 
-            //     &ip->saddr, bpf_ntohs(udp->source), &ip->daddr, bpf_ntohs(udp->dest));
+            bpf_printk("key->prefixlen: [%02x]", key->prefixlen);
+            #pragma unroll
+            for (int i = 0; i < 16; i++) {
+                bpf_printk("key->domain[%d]: [%02x]", i, key->domain[i]);
+            }
+            bpf_printk("DNS [%s][%s][%d] Direct Receive session: %pI4:%d -> %pI4:%d\n", 
+                cursor, key->domain, key->prefixlen, 
+                &ip->saddr, bpf_ntohs(udp->source), &ip->daddr, bpf_ntohs(udp->dest));
+
+            bpf_printk("Lookup Key Hex: %08x %08x", *(__u32 *)key, *(__u32 *)(key->domain));
 
             return XDP_PASS;
         }
@@ -126,9 +175,9 @@ static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void 
         udp->dest = new_dport;
         udp_update_csum(old_dport, new_dport, &udp->check);
 
-        // bpf_printk("DNS Ingress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
-        // bpf_printk("Ingress [%s][%s] AFTER: %d -> %d\n", 
-        //     cursor, key->domain, bpf_ntohs(old_dport), bpf_ntohs(new_dport));
+        bpf_printk("DNS Ingress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
+        bpf_printk("Ingress [%s][%s] AFTER: %d -> %d\n", 
+            cursor, key->domain, bpf_ntohs(old_dport), bpf_ntohs(new_dport));
     } 
 
     return XDP_PASS;

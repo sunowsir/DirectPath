@@ -12,16 +12,16 @@ set -euo pipefail
 # --- 配置参数 ---
 LAN_IF="eth1"
 WAN_IF="eth0"
-BPF_OBJ="${BPF_OBJ:-tc_direct_path.o}"
-BPF_DIR="${BPF_DIR:-/sys/fs/bpf/tc_progs}"
+TC_BPF_OBJ="${TC_BPF_OBJ:-tc_direct_path.o}"
+TC_BPF_DIR="${TC_BPF_DIR:-/sys/fs/bpf/tc_progs}"
 
 # 程序固定点路径
-PROG_BASE="${BPF_DIR}/tc_accel_prog"
+PROG_BASE="${TC_BPF_DIR}/tc_accel_prog"
 # Map 固定路径
-HOTPATH_PIN="${BPF_DIR}/hotpath_cache"
-PRE_PIN="${BPF_DIR}/pre_cache"
-BLACK_PIN="${BPF_DIR}/blklist_ip_map"
-DIRECT_PIN="${BPF_DIR}/direct_ip_map"
+HOTPATH_PIN="${TC_BPF_DIR}/hotpath_cache"
+PRE_PIN="${TC_BPF_DIR}/pre_cache"
+BLACK_PIN="${TC_BPF_DIR}/blklist_ip_map"
+DIRECT_PIN="${TC_BPF_DIR}/direct_ip_map"
 
 # eBPF共享内存大小
 HOTMAP_SIZE=${HOTMAP_SIZE:-65536}
@@ -73,13 +73,13 @@ function create_map() {
     info "2. 创建 eBPF Maps..."
     
     tc_pin_clean
-    if mountpoint -q "${BPF_DIR}" 2>/dev/null || [[ -d "${BPF_DIR}" ]]; then
-        umount -f "${BPF_DIR}" 2>/dev/null || true
-        rm -rf "${BPF_DIR}"
+    if mountpoint -q "${TC_BPF_DIR}" 2>/dev/null || [[ -d "${TC_BPF_DIR}" ]]; then
+        umount -f "${TC_BPF_DIR}" 2>/dev/null || true
+        rm -rf "${TC_BPF_DIR}"
     fi
 
-    mkdir -p "${BPF_DIR}"
-    mount -t bpf bpf "${BPF_DIR}" 2>/dev/null || info "bpffs 已就绪"
+    mkdir -p "${TC_BPF_DIR}"
+    mount -t bpf bpf "${TC_BPF_DIR}" 2>/dev/null || info "bpffs 已就绪"
 
     do_create_map "${HOTPATH_PIN}" lru_hash 4 8 "${HOTMAP_SIZE}" hotpath_cache
     do_create_map "${PRE_PIN}" lru_hash 4 16 "${PREMAP_SIZE}" pre_cache
@@ -90,7 +90,7 @@ function create_map() {
 # --- 3. 加载程序 ---
 function load_ebpf_prog() {
     info "3. 加载 BPF 程序..."
-    bpftool prog loadall "${BPF_OBJ}" "${PROG_BASE}" \
+    bpftool prog loadall "${TC_BPF_OBJ}" "${PROG_BASE}" \
         map name hotpath_cache pinned "${HOTPATH_PIN}" \
         map name pre_cache pinned "${PRE_PIN}" \
         map name direct_ip_map pinned "${DIRECT_PIN}" \

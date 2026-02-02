@@ -122,7 +122,6 @@ static __always_inline int do_lookup_map(__u32 *addr) {
 
     /* 查白名单并更新缓存 */
     if (bpf_map_lookup_elem(&direct_ip_map, &key)) {
-        // bpf_map_update_elem(&hotpath_cache, addr, &(__u64){bpf_ktime_get_ns()}, BPF_ANY);
         /* 加入到预缓存 */
         pre_val_t first = {.first_seen = now, .count = 1};
         bpf_map_update_elem(&pre_cache, addr, &first, BPF_ANY);

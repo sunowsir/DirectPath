@@ -7,7 +7,6 @@
 # Creation : 2026-01-29 14:27:19
 #
 
-#!/bin/bash
 set -euo pipefail
 
 # --- 配置 ---
