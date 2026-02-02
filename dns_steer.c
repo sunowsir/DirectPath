@@ -69,6 +69,79 @@ static __always_inline int is_valid_dns_char(unsigned char c) {
     return 0;
 }
 
+static __always_inline __u8 dns_pkt_check(unsigned char *dns_hdr, void *data_end) {
+    if (unlikely(NULL == dns_hdr || NULL == data_end)) return 0;
+
+    // 检查数据包长度是否至少够 DNS Header + 最短域名(1字节长度+0字节结尾)
+    if ((void *)dns_hdr + 14 > data_end) return 0;
+    
+    // 只处理 1 个查询的包。QDCOUNT 是 Header 的第 5-6 字节
+    __u16 qdcount = bpf_ntohs(*(__u16 *)((void *)dns_hdr + 4));
+    // 如果不是1个查询，这种写死偏移的逻辑就不保险，直接放行
+    if (qdcount != 1) return 0; 
+
+    return 1;
+}
+
+static __always_inline __u32 domain_copy(unsigned char *ptr, domain_key_t *key, void *data_end) {
+    if (unlikely(NULL == ptr || NULL == key || NULL == data_end)) return 0;
+
+    __u32 len = 0;
+    __u8 remaining_label_len = 0;
+    #pragma unroll
+    for (int i = 0; i < DOMAIN_MAX_LEN; i++) {
+        if ((void *)ptr + 1 > data_end) break;
+        if (0 == *ptr) break;
+
+        if (0 == remaining_label_len) {
+            if (*ptr > DNS_LABEL_MAX_LEN) {
+                // bpf_printk("invalid label len [%s][%s][%02x] Direct Receive session: %pI4:%d -> %pI4:%d\n", 
+                //     cursor, key->domain, *ptr, 
+                //     &ip->saddr, bpf_ntohs(udp->source), &ip->daddr, bpf_ntohs(udp->dest));
+
+                ptr++;
+                continue;
+            }
+
+            remaining_label_len = *ptr;
+            key->domain[len++] = *ptr;
+        } else {
+            if (!is_valid_dns_char(*ptr)) {
+                // bpf_printk("invalid char [%s][%s][%02x] Direct Receive session: %pI4:%d -> %pI4:%d\n", 
+                //     cursor, key->domain, *ptr, 
+                //     &ip->saddr, bpf_ntohs(udp->source), &ip->daddr, bpf_ntohs(udp->dest));
+
+                ptr++;
+                remaining_label_len = 0;
+                continue;
+            }
+
+            key->domain[len++] = *ptr;
+            remaining_label_len--;
+        }
+
+        ptr++;
+    }
+
+    return len;
+}
+
+static __always_inline void domain_reverse(domain_key_t *key, __u32 len) {
+    if (unlikely(NULL == key)) return ;
+
+    #pragma unroll
+    for (int i = 0; i < DOMAIN_MAX_LEN / 2; i++) {
+        int j = len - 1 - i;
+        if (i >= j || j >= DOMAIN_MAX_LEN) break;
+    
+        char t = key->domain[i];
+        key->domain[i] = key->domain[j];
+        key->domain[j] = t;
+    }
+
+    return ;
+}
+
 static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void *data_end) {
     if (unlikely(NULL == ctx || NULL == ip || NULL == data_end)) return XDP_PASS;
 
@@ -79,16 +152,8 @@ static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void 
     if (bpf_htons(NORMAOL_DNS_PORT) == udp->dest) {
 
         unsigned char *dns_hdr = (void *)(udp + 1);
+        if (unlikely(!dns_pkt_check(dns_hdr, data_end))) return XDP_PASS;
  
-        // 1. 检查数据包长度是否至少够 DNS Header + 最短域名(1字节长度+0字节结尾)
-        if ((void *)dns_hdr + 14 > data_end) return XDP_PASS;
-        
-        // 2. 靠谱校验：检查查询数量 (QDCOUNT)
-        // 通常我们只处理 1 个查询的包。QDCOUNT 是 Header 的第 5-6 字节
-        __u16 qdcount = bpf_ntohs(*(__u16 *)((void *)dns_hdr + 4));
-        if (qdcount != 1) return XDP_PASS; // 如果不是1个查询，这种写死偏移的逻辑就不保险，直接放行
-
-        if ((void *)(dns_hdr + 12) > data_end) return XDP_PASS;
         unsigned char *cursor = dns_hdr + 12;
 
         __u32 kkey = 0;
@@ -96,73 +161,26 @@ static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void 
         if (unlikely(!key)) return XDP_PASS;
         __builtin_memset(key, 0, sizeof(domain_key_t));
 
-        // bpf_probe_read_kernel_str(key->domain, sizeof(key->domain), cursor);
-
-        __u32 len = 0;
-        unsigned char *ptr = cursor;
-        __u8 remaining_label_len = 0;
-        #pragma unroll
-        for (int i = 0; i < DOMAIN_MAX_LEN; i++) {
-            if ((void *)ptr + 1 > data_end) break;
-            if (0 == *ptr) break;
-
-            if (0 == remaining_label_len) {
-                if (*ptr > DNS_LABEL_MAX_LEN) {
-                    // bpf_printk("invalid label len [%s][%s][%02x] Direct Receive session: %pI4:%d -> %pI4:%d\n", 
-                    //     cursor, key->domain, *ptr, 
-                    //     &ip->saddr, bpf_ntohs(udp->source), &ip->daddr, bpf_ntohs(udp->dest));
-
-                    ptr++;
-                    continue;
-                }
-
-                remaining_label_len = *ptr;
-                key->domain[len++] = *ptr;
-            } else {
-                if (!is_valid_dns_char(*ptr)) {
-                    // bpf_printk("invalid char [%s][%s][%02x] Direct Receive session: %pI4:%d -> %pI4:%d\n", 
-                    //     cursor, key->domain, *ptr, 
-                    //     &ip->saddr, bpf_ntohs(udp->source), &ip->daddr, bpf_ntohs(udp->dest));
-
-                    ptr++;
-                    remaining_label_len = 0;
-                    continue;
-                }
-
-                key->domain[len++] = *ptr;
-                remaining_label_len--;
-            }
-
-            ptr++;
-        }
-
+        __u32 len = domain_copy(cursor, key, data_end);
         if (unlikely(len == 0 || len > DOMAIN_MAX_LEN)) return XDP_PASS;
         key->prefixlen = (len & (DOMAIN_MAX_LEN - 1)) * 8;
 
-        #pragma unroll
-        for (int i = 0; i < DOMAIN_MAX_LEN / 2; i++) {
-            int j = len - 1 - i;
-            if (i >= j || j >= DOMAIN_MAX_LEN) break;
-        
-            char t = key->domain[i];
-            key->domain[i] = key->domain[j];
-            key->domain[j] = t;
-        }
+        domain_reverse(key, len);
 
-        // 4. 匹配
+        /* 匹配 */
         __u32 *val = bpf_map_lookup_elem(&domain_map, key);
         if (unlikely(!val)) {
 
-            bpf_printk("key->prefixlen: [%02x]", key->prefixlen);
-            #pragma unroll
-            for (int i = 0; i < 16; i++) {
-                bpf_printk("key->domain[%d]: [%02x]", i, key->domain[i]);
-            }
-            bpf_printk("DNS [%s][%s][%d] Direct Receive session: %pI4:%d -> %pI4:%d\n", 
-                cursor, key->domain, key->prefixlen, 
-                &ip->saddr, bpf_ntohs(udp->source), &ip->daddr, bpf_ntohs(udp->dest));
+            // bpf_printk("key->prefixlen: [%02x]", key->prefixlen);
+            // #pragma unroll
+            // for (int i = 0; i < 16; i++) {
+            //     bpf_printk("key->domain[%d]: [%02x]", i, key->domain[i]);
+            // }
+            // bpf_printk("DNS [%s][%s][%d] Direct Receive session: %pI4:%d -> %pI4:%d\n", 
+            //     cursor, key->domain, key->prefixlen, 
+            //     &ip->saddr, bpf_ntohs(udp->source), &ip->daddr, bpf_ntohs(udp->dest));
 
-            bpf_printk("Lookup Key Hex: %08x %08x", *(__u32 *)key, *(__u32 *)(key->domain));
+            // bpf_printk("Lookup Key Hex: %08x %08x", *(__u32 *)key, *(__u32 *)(key->domain));
 
             return XDP_PASS;
         }
@@ -175,9 +193,9 @@ static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void 
         udp->dest = new_dport;
         udp_update_csum(old_dport, new_dport, &udp->check);
 
-        bpf_printk("DNS Ingress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
-        bpf_printk("Ingress [%s][%s] AFTER: %d -> %d\n", 
-            cursor, key->domain, bpf_ntohs(old_dport), bpf_ntohs(new_dport));
+        // bpf_printk("DNS Ingress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
+        // bpf_printk("Ingress [%s][%s] AFTER: %d -> %d\n", 
+        //     cursor, key->domain, bpf_ntohs(old_dport), bpf_ntohs(new_dport));
     } 
 
     return XDP_PASS;
@@ -190,11 +208,11 @@ int dns_port_steer(struct xdp_md *ctx) {
 
     // --- 解析头部  ---
     struct ethhdr *eth = data;
-    if ((void *)(eth + 1) > data_end) return XDP_PASS;
-    if (eth->h_proto != bpf_htons(ETH_P_IP)) return XDP_PASS;
+    if ((unlikely((void *)(eth + 1) > data_end))) return XDP_PASS;
+    if (unlikely(eth->h_proto != bpf_htons(ETH_P_IP))) return XDP_PASS;
 
     struct iphdr *ip = data + sizeof(struct ethhdr);
-    if ((void *)(ip + 1) > data_end) return XDP_PASS;
+    if (unlikely((void *)(ip + 1) > data_end)) return XDP_PASS;
     if (ip->protocol != IPPROTO_UDP) return XDP_PASS;
 
     /* 如果源地址不是私网地址或者目的地址不是私网地址，则不予处理 */
