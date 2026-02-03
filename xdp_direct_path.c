@@ -15,12 +15,17 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
+/* 标准DNS端口 */
 #define NORMAOL_DNS_PORT        53
+/* 内网国内专用DNS服务器服务端口 */
 #define DIRECT_DNS_SERVER_PORT  15301
 
+/* 当前支持的最长的域名长度 */
 #define DOMAIN_MAX_LEN          64
+/* 单个域名标签支持的最大长度 */
 #define DNS_LABEL_MAX_LEN       63
 
+/* 国内域名库共享内存大小 */
 #define DOMAIN_MAP_SIZE         10485760
 
 typedef struct domain_key {
