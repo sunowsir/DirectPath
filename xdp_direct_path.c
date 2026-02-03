@@ -100,25 +100,22 @@ static __always_inline __u32 domain_copy(unsigned char *ptr, domain_key_t *key, 
     __u32 len = 0;
     __u8 remaining_label_len = 0;
     #pragma unroll
-    for (int i = 0; i < DOMAIN_MAX_LEN; i++) {
+    for (int i = 0; i < DOMAIN_MAX_LEN; i++, ptr++) {
         if (unlikely(((void *)ptr + 1 > data_end) || (0 == *ptr))) break;
 
         if (0 == remaining_label_len) {
-            if (*ptr > DNS_LABEL_MAX_LEN) goto loop_continue;
+            if (*ptr > DNS_LABEL_MAX_LEN) continue;
             remaining_label_len = *ptr;
         } else {
             if (!is_valid_dns_char(*ptr)) {
                 remaining_label_len = 0;
-                goto loop_continue;
+                continue;
             }
 
             remaining_label_len--;
         }
         
         key->domain[len++] = *ptr;
-
-loop_continue: 
-        ptr++;
     }
 
     return len;
