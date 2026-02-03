@@ -142,46 +142,62 @@ static __always_inline void domain_reverse(domain_key_t *key, __u32 len) {
     return ;
 }
 
+static __always_inline __u8 is_domain_match(struct iphdr *ip, struct udphdr *udp, void *data_end) {
+    if (unlikely(NULL == ip || NULL == udp || NULL == data_end)) return 0;
+
+    unsigned char *dns_hdr = (void *)(udp + 1);
+    if (unlikely(!dns_pkt_check(dns_hdr, data_end))) return 0;
+
+    unsigned char *cursor = dns_hdr + 12;
+
+    /* 获取一个key结构用于查询 */
+    __u32 kkey = 0;
+    domain_key_t *key = bpf_map_lookup_elem(&domain_map_key, &kkey);
+    if (unlikely(!key)) return 0;
+    __builtin_memset(key, 0, sizeof(domain_key_t));
+
+    /* 根据udp DNS 报文结构 [长度][内容][长度][内容] 拷贝有效报文到key中用于查询 */
+    __u32 len = domain_copy(cursor, key, data_end);
+    if (unlikely(len == 0 || len > DOMAIN_MAX_LEN)) return 0;
+    key->prefixlen = (len & (DOMAIN_MAX_LEN - 1)) * 8;
+
+    /* 翻转key拷贝好的报文，因为用于保存国内域名名单的共享内存数据结构是LPM，前缀树 */
+    domain_reverse(key, len);
+
+    /* 匹配 */
+    __u32 *val = bpf_map_lookup_elem(&domain_map, key);
+    if (unlikely(!val)) {
+        // error_debug_info(cursor, key, ip);
+        return 0;
+    }
+
+    return 1;
+}
+
+/* 修改端口 */
+static __always_inline void dns_pkt_dport_modify(struct udphdr *udp) {
+    if (unlikely(NULL == udp)) return ;
+
+    __be16 old_dport = udp->dest;
+    __be16 new_dport = bpf_htons(DIRECT_DNS_SERVER_PORT);
+    udp->dest = new_dport;
+    udp_update_csum(old_dport, new_dport, &udp->check);
+
+    return ;
+}
+
 static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void *data_end) {
     if (unlikely(NULL == ctx || NULL == ip || NULL == data_end)) return XDP_PASS;
 
     struct udphdr *udp = (void *)ip + sizeof(*ip);
     if (unlikely(NULL == udp)) return XDP_PASS;
     if (unlikely((void *)(udp + 1) > data_end)) return XDP_PASS;
+    if (bpf_htons(NORMAOL_DNS_PORT) != udp->dest) return XDP_PASS;
 
-    if (bpf_htons(NORMAOL_DNS_PORT) == udp->dest) {
+    if (!is_domain_match(ip, udp, data_end)) return XDP_PASS;
 
-        unsigned char *dns_hdr = (void *)(udp + 1);
-        if (unlikely(!dns_pkt_check(dns_hdr, data_end))) return XDP_PASS;
- 
-        unsigned char *cursor = dns_hdr + 12;
-
-        __u32 kkey = 0;
-        domain_key_t *key = bpf_map_lookup_elem(&domain_map_key, &kkey);
-        if (unlikely(!key)) return XDP_PASS;
-        __builtin_memset(key, 0, sizeof(domain_key_t));
-
-        __u32 len = domain_copy(cursor, key, data_end);
-        if (unlikely(len == 0 || len > DOMAIN_MAX_LEN)) return XDP_PASS;
-        key->prefixlen = (len & (DOMAIN_MAX_LEN - 1)) * 8;
-
-        domain_reverse(key, len);
-
-        /* 匹配 */
-        __u32 *val = bpf_map_lookup_elem(&domain_map, key);
-        if (unlikely(!val)) {
-            // error_debug_info(cursor, key, ip);
-            return XDP_PASS;
-        }
-
-        __u16 check_val = udp->check;
-
-        /* 修改端口 */
-        __be16 old_dport = udp->dest;
-        __be16 new_dport = bpf_htons(DIRECT_DNS_SERVER_PORT);
-        udp->dest = new_dport;
-        udp_update_csum(old_dport, new_dport, &udp->check);
-    } 
+    /* 修改端口 */
+    dns_pkt_dport_modify(udp);
 
     return XDP_PASS;
 }
