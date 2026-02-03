@@ -1,5 +1,5 @@
 /*
- * File     : dns_steer.c
+ * File     : xdp_direct_path.c
  * Author   : sun.wang
  * Mail     : sunowsir@163.com
  * Github   : github.com/sunowsir
@@ -34,7 +34,6 @@ struct {
     __type(key, domain_key_t);
     __type(value, __u32);
     __uint(map_flags, BPF_F_NO_PREALLOC);
-    __uint(pinning, LIBBPF_PIN_BY_NAME);
 } domain_map SEC(".maps");
 
 struct {
@@ -95,10 +94,6 @@ static __always_inline __u32 domain_copy(unsigned char *ptr, domain_key_t *key, 
 
         if (0 == remaining_label_len) {
             if (*ptr > DNS_LABEL_MAX_LEN) {
-                // bpf_printk("invalid label len [%s][%s][%02x] Direct Receive session: %pI4:%d -> %pI4:%d\n", 
-                //     cursor, key->domain, *ptr, 
-                //     &ip->saddr, bpf_ntohs(udp->source), &ip->daddr, bpf_ntohs(udp->dest));
-
                 ptr++;
                 continue;
             }
@@ -107,10 +102,6 @@ static __always_inline __u32 domain_copy(unsigned char *ptr, domain_key_t *key, 
             key->domain[len++] = *ptr;
         } else {
             if (!is_valid_dns_char(*ptr)) {
-                // bpf_printk("invalid char [%s][%s][%02x] Direct Receive session: %pI4:%d -> %pI4:%d\n", 
-                //     cursor, key->domain, *ptr, 
-                //     &ip->saddr, bpf_ntohs(udp->source), &ip->daddr, bpf_ntohs(udp->dest));
-
                 ptr++;
                 remaining_label_len = 0;
                 continue;
@@ -169,25 +160,11 @@ static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void 
 
         /* 匹配 */
         __u32 *val = bpf_map_lookup_elem(&domain_map, key);
-        if (unlikely(!val)) {
-
-            // bpf_printk("key->prefixlen: [%02x]", key->prefixlen);
-            // #pragma unroll
-            // for (int i = 0; i < 16; i++) {
-            //     bpf_printk("key->domain[%d]: [%02x]", i, key->domain[i]);
-            // }
-            // bpf_printk("DNS [%s][%s][%d] Direct Receive session: %pI4:%d -> %pI4:%d\n", 
-            //     cursor, key->domain, key->prefixlen, 
-            //     &ip->saddr, bpf_ntohs(udp->source), &ip->daddr, bpf_ntohs(udp->dest));
-
-            // bpf_printk("Lookup Key Hex: %08x %08x", *(__u32 *)key, *(__u32 *)(key->domain));
-
-            return XDP_PASS;
-        }
+        if (unlikely(!val)) return XDP_PASS;
 
         __u16 check_val = udp->check;
 
-        // 执行劫持
+        /* 修改端口 */
         __be16 old_dport = udp->dest;
         __be16 new_dport = bpf_htons(DIRECT_DNS_SERVER_PORT);
         udp->dest = new_dport;
@@ -202,7 +179,7 @@ static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void 
 }
 
 SEC("xdp")
-int dns_port_steer(struct xdp_md *ctx) {
+int xdp_direct_path(struct xdp_md *ctx) {
     void *data_end = (void *)(long)ctx->data_end;
     void *data = (void *)(long)ctx->data;
 

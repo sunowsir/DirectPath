@@ -11,7 +11,7 @@ set -euo pipefail
 
 # --- 配置 ---
 RULE_FILE="/etc/openclash/rule_provider/ChinaMax.yml"
-MAP_PATH="/sys/fs/bpf/dns_steer/domain_map"
+MAP_PATH="/sys/fs/bpf/xdp_progs/domain_map"
 BATCH_CHUNK_SIZE=10000
 MAX_LEN=64
 
@@ -23,7 +23,7 @@ fi
 echo "正在分批注入规则并处理 .cn 后缀..."
 
 # 提升锁定内存限制
-ulimit -l unlimited || true
+# ulimit -l unlimited || true
 
 python3 - <<EOF
 import struct

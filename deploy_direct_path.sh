@@ -12,27 +12,42 @@ set -euo pipefail
 # --- 配置参数 ---
 LAN_IF="eth1"
 WAN_IF="eth0"
+
 TC_BPF_OBJ="${TC_BPF_OBJ:-tc_direct_path.o}"
+XDP_BPF_OBJ="${XDP_BPF_OBJ:-xdp_direct_path.o}"
+
 TC_BPF_DIR="${TC_BPF_DIR:-/sys/fs/bpf/tc_progs}"
+XDP_BPF_DIR="${XDP_BPF_DIR:-/sys/fs/bpf/xdp_progs}"
 
 # 程序固定点路径
-PROG_BASE="${TC_BPF_DIR}/tc_accel_prog"
+TC_PROG_BASE="${TC_BPF_DIR}/tc_accel_prog"
+XDP_PROG_BASE="${XDP_BPF_DIR}/xdp_accel_prog"
+
+# Map 名称
+HOTPATH_MAPNAME="${HOTPATH_MAPNAME:-hotpath_cache}"
+PRE_MAPNAME="${PRE_MAPNAME:-pre_cache}"
+BLKLIST_MAPNAME="${BLKLIST_MAPNAME:-blklist_ip_map}"
+DIRECT_MAPNAME="${DIRECT_MAPNAME:-direct_ip_map}"
+DOMAIN_MAPNAME="${DOMAIN_MAPNAME:-domain_map}"
+
 # Map 固定路径
-HOTPATH_PIN="${TC_BPF_DIR}/hotpath_cache"
-PRE_PIN="${TC_BPF_DIR}/pre_cache"
-BLACK_PIN="${TC_BPF_DIR}/blklist_ip_map"
-DIRECT_PIN="${TC_BPF_DIR}/direct_ip_map"
+HOTPATHMAP_PIN="${TC_BPF_DIR}/${HOTPATH_MAPNAME}"
+PREMAP_PIN="${TC_BPF_DIR}/${PRE_MAPNAME}"
+BLACKMAP_PIN="${TC_BPF_DIR}/${BLKLIST_MAPNAME}"
+DIRECTMAP_PIN="${TC_BPF_DIR}/${DIRECT_MAPNAME}"
+DOMAINMAP_PIN="${XDP_BPF_DIR}/${DOMAIN_MAPNAME}"
 
 # eBPF共享内存大小
 HOTMAP_SIZE=${HOTMAP_SIZE:-65536}
 PREMAP_SIZE=${PREMAP_SIZE:-65536}
 BLACKMAP_SIZE=${BLACKMAP_SIZE:-8192}
 DIRECTMAP_SIZE=${DIRECTMAP_SIZE:-16384}
+DOMAINMAP_SIZE=${DOMAINMAP_SIZE:-10485760}
 
 # 加速mark标记
 DIRECT_PATH_MARK="${DIRECT_PATH_MARK:-0x88000000}"
 
-# 优先级配置
+# nft 优先级配置
 # 抢在 OpenClash (-150/-100) 之前
 BYPASS_PRIORITY="-151" 
 BPF_ACCEL_FORWARD_PRIORITY="1"
@@ -43,21 +58,27 @@ BPF_ACCEL_OUTPUT_PRIORITY="-151"
 readonly REQUIRED_CMDS=(bpftool tc nft mount umount ip)
 
 # --- 辅助函数 ---
-function err() { echo "ERROR: $*" >&2; }
-function info() { echo "INFO: $*"; }
+function info() { echo -e "\033[32mINFO:\033[0m $*"; }
+function err()  { echo -e "\033[31mERROR:\033[0m $*" >&2; }
+function get_pin_path() {
+    local path
+    path=$(find "${1}" -maxdepth 1 -type f -print -quit 2>/dev/null)
+    echo "$path"
+}
+
 function tc_pin_clean() {
     tc qdisc del dev "${LAN_IF}" clsact 2>/dev/null || true
     tc qdisc del dev "${WAN_IF}" clsact 2>/dev/null || true
 }
-function get_pin_path() {
-    local path
-    path=$(find "${PROG_BASE}" -maxdepth 1 -type f -print -quit 2>/dev/null)
-    echo "$path"
+
+function xdp_pin_clean() {
+    ip link set dev "${LAN_IF}" xdp off 2>/dev/null || true
+    bpftool net detach xdpgeneric dev "${LAN_IF}"
 }
 
 # --- 环境检查 ---
 function env_check() {
-    info "0. 环境检查..."
+    info "环境检查..."
     if [[ $(id -u) -ne 0 ]]; then err "该脚本必须以 root 运行"; exit 1; fi
     
     for cmd in "${REQUIRED_CMDS[@]}"; do
@@ -69,53 +90,91 @@ function env_check() {
 function do_create_map() {
     bpftool map create "$1" type "$2" key "$3" value "$4" entries "$5" name "$6" flags "${7:-0}"
 }
-function create_map() {
-    info "2. 创建 eBPF Maps..."
+
+function create_tc_map() {
+    info "创建 TC eBPF Maps..."
     
     tc_pin_clean
+
     if mountpoint -q "${TC_BPF_DIR}" 2>/dev/null || [[ -d "${TC_BPF_DIR}" ]]; then
         umount -f "${TC_BPF_DIR}" 2>/dev/null || true
         rm -rf "${TC_BPF_DIR}"
     fi
 
     mkdir -p "${TC_BPF_DIR}"
-    mount -t bpf bpf "${TC_BPF_DIR}" 2>/dev/null || info "bpffs 已就绪"
 
-    do_create_map "${HOTPATH_PIN}" lru_hash 4 8 "${HOTMAP_SIZE}" hotpath_cache
-    do_create_map "${PRE_PIN}" lru_hash 4 16 "${PREMAP_SIZE}" pre_cache
-    do_create_map "${BLACK_PIN}" lpm_trie 8 4 "${BLACKMAP_SIZE}" blklist_ip_map 1
-    do_create_map "${DIRECT_PIN}" lpm_trie 8 4 "${DIRECTMAP_SIZE}" direct_ip_map 1
+    mount -t bpf bpf "${TC_BPF_DIR}" || { err "挂载 ${TC_BPF_DIR} bpffs 失败"; exit 1; }
+
+    do_create_map "${HOTPATHMAP_PIN}" lru_hash 4 8 "${HOTMAP_SIZE}" "${HOTPATH_MAPNAME}"
+    do_create_map "${PREMAP_PIN}" lru_hash 4 16 "${PREMAP_SIZE}" "${PRE_MAPNAME}"
+    do_create_map "${BLACKMAP_PIN}" lpm_trie 8 4 "${BLACKMAP_SIZE}" "${BLKLIST_MAPNAME}" 1
+    do_create_map "${DIRECTMAP_PIN}" lpm_trie 8 4 "${DIRECTMAP_SIZE}" "${DIRECT_MAPNAME}" 1
+
+}
+
+function create_xdp_map() {
+    info "创建 XDP eBPF Maps..."
+
+    xdp_pin_clean
+
+    if mountpoint -q "${XDP_BPF_DIR}" 2>/dev/null || [[ -d "${XDP_BPF_DIR}" ]]; then
+        umount -f "${XDP_BPF_DIR}" 2>/dev/null || true
+        rm -rf "${XDP_BPF_DIR}"
+    fi
+
+    mkdir -p "${XDP_BPF_DIR}"
+
+    mount -t bpf bpf "${XDP_BPF_DIR}" || { err "挂载 ${XDP_BPF_DIR} bpffs 失败"; exit 1; }
+
+    do_create_map "${DOMAINMAP_PIN}" lpm_trie 68 4 "${DOMAINMAP_SIZE}" "${DOMAIN_MAPNAME}" 1
 }
 
 # --- 3. 加载程序 ---
-function load_ebpf_prog() {
-    info "3. 加载 BPF 程序..."
-    bpftool prog loadall "${TC_BPF_OBJ}" "${PROG_BASE}" \
-        map name hotpath_cache pinned "${HOTPATH_PIN}" \
-        map name pre_cache pinned "${PRE_PIN}" \
-        map name direct_ip_map pinned "${DIRECT_PIN}" \
-        map name blklist_ip_map pinned "${BLACK_PIN}"
+function load_tc_ebpf_prog() {
+    info "加载 TC BPF 程序..."
+
+    # 加载 TC
+    bpftool prog loadall "${TC_BPF_OBJ}" "${TC_PROG_BASE}" \
+        map name "${HOTPATH_MAPNAME}" pinned "${HOTPATHMAP_PIN}" \
+        map name "${PRE_MAPNAME}" pinned "${PREMAP_PIN}" \
+        map name "${DIRECT_MAPNAME}" pinned "${DIRECTMAP_PIN}" \
+        map name "${BLKLIST_MAPNAME}" pinned "${BLACKMAP_PIN}"
 
     local pin_path
-    pin_path=$(get_pin_path)
-    
+    pin_path=$(get_pin_path "${TC_PROG_BASE}")
     if [[ -z "${pin_path}" ]]; then
-        err "找不到已加载的 BPF 程序固定点，加载失败"
+        err "${TC_PROG_BASE} 下找不到已加载的 TC BPF 程序固定点，加载失败"
+        exit 9
+    fi
+
+}
+
+function load_xdp_ebpf_prog() {
+    info "加载 XDP BPF 程序..."
+
+    # 加载 XDP
+    bpftool prog loadall "${XDP_BPF_OBJ}" "${XDP_PROG_BASE}" \
+        type xdp \
+        map name "${DOMAIN_MAPNAME}" pinned "${DOMAINMAP_PIN}"
+
+    pin_path=$(get_pin_path "${XDP_PROG_BASE}")
+    if [[ -z "${pin_path}" ]]; then
+        err "${XDP_PROG_BASE} 下找不到已加载的 XDP BPF 程序固定点，加载失败"
         exit 9
     fi
 }
 
-# --- 4. TC 挂载 ---
+# --- TC 挂载 ---
 function tc_pinning() {
-    info "4. 挂载 TC 过滤器至 ${LAN_IF} 和 ${WAN_IF}..."
+    info "挂载 TC 过滤器至 ${LAN_IF} 和 ${WAN_IF}..."
 
     tc_pin_clean
 
     local pin_path
-    pin_path=$(get_pin_path)
+    pin_path=$(get_pin_path "${TC_PROG_BASE}")
     
     if [[ -z "${pin_path}" ]]; then
-        err "找不到已加载的 BPF 程序固定点，请先执行 load_ebpf_prog"
+        err "找不到已加载的 BPF 程序固定点，请先执行 load_tc_ebpf_prog"
         exit 9
     fi
 
@@ -126,6 +185,23 @@ function tc_pinning() {
     tc qdisc add dev "${WAN_IF}" clsact
     tc filter add dev "${WAN_IF}" ingress bpf da pinned "${pin_path}"
     tc filter add dev "${WAN_IF}" egress bpf da pinned "${pin_path}"
+}
+
+# --- XDP 挂载 ---
+function xdp_pinning() {
+    info "挂载 XDP 过滤器至 ${LAN_IF}..."
+
+    xdp_pin_clean
+
+    local pin_path
+    pin_path=$(get_pin_path "${XDP_PROG_BASE}")
+    
+    if [[ -z "${pin_path}" ]]; then
+        err "找不到已加载的 BPF 程序固定点，请先执行 load_xdp_ebpf_prog"
+        exit 9
+    fi
+
+    bpftool net attach xdpgeneric pinned "${pin_path}" dev "${LAN_IF}"
 }
 
 # --- 5. Nftables 联动 ---
@@ -165,14 +241,50 @@ function nft_rule_set() {
     nft "add rule inet bpf_accel output meta mark & 0xff000000 == ${DIRECT_PATH_MARK} ct state established accept"
 }
 
-env_check
-create_map 
-load_ebpf_prog 
-tc_pinning
-nft_rule_set
+function start {
+    env_check
+    create_tc_map 
+    create_xdp_map
+    load_tc_ebpf_prog 
+    load_xdp_ebpf_prog
+    tc_pinning
+    xdp_pinning
+    nft_rule_set
+
+    info "---------------------------------------"
+    info "部署完成！使用以下命令监控截流情况："
+    info "watch -n 1 'nft list counters inet bpf_accel'"
+    info "---------------------------------------"
+}
+
+function clean_all() {
+    env_check
+
+    info "清理挂载程序"
+    tc_pin_clean  
+    xdp_pin_clean 
+
+    info "删除MAP"
+    if mountpoint -q "${TC_BPF_DIR}" 2>/dev/null || [[ -d "${TC_BPF_DIR}" ]]; then
+        umount -f "${TC_BPF_DIR}" 2>/dev/null || true
+        rm -rf "${TC_BPF_DIR}"
+    fi
+
+    if mountpoint -q "${XDP_BPF_DIR}" 2>/dev/null || [[ -d "${XDP_BPF_DIR}" ]]; then
+        umount -f "${XDP_BPF_DIR}" 2>/dev/null || true
+        rm -rf "${XDP_BPF_DIR}"
+    fi
+
+    info "删除nft规则"
+    nft delete table inet bpf_accel 2>/dev/null || true
+
+    info "清理完成"
+}
+
+case "${1:-start}" in
+    "start") start ;;
+    "stop")  clean_all ;;
+    *) err "usage: $0 start|stop" ;;
+esac
 
 
-info "---------------------------------------"
-info "部署完成！请使用以下命令监控截流情况："
-info "watch -n 1 'nft list counters inet bpf_accel'"
-info "---------------------------------------"

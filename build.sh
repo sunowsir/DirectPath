@@ -20,5 +20,5 @@ $BPF_SDK/bin/clang -O2 -target bpf -g \
     -I$BPF_SDK/include \
     -I$TARGET_INC \
     -I$TOOLCHAIN_INC \
-    -c dns_steer.c -o dns_steer.o
+    -c xdp_direct_path.c -o xdp_direct_path.o
 

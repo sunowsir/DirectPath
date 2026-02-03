@@ -12,25 +12,22 @@
   1. 解压openwrt编译好的llvm工具链：`llvm-bpf-21.1.6.Linux-x86_64`
   2. 将代码`tc_direct_path.c`、`dns_steer.c`和编译脚本`build.sh`拷贝到工具链目录中`llvm-bpf-21.1.6.Linux-x86_64/llvm-bpf/`
   3. 执行编译脚本`build.sh` 
-  4. 拷贝生成的`tc_direct_path.o`以及`dns_steer.o`到openwrt设备上 
-  5. 拷贝其他脚本`cleanup_env.sh`、`deploy_direct_path.sh`以及`load_china_ip.sh`等到openwrt设备上与`tc_direct_path.o`同目录
-  6. 部署执行`deploy_direct_path.sh`，然后载入国内域名执行`load_china_ip.sh`
-  7. 部署执行dns直连脚本：`./manage_dns_bpf.sh stop && ./manage_dns_bpf.sh start && ./import_domestic.sh`
+  4. 拷贝生成的`tc_direct_path.o`以及`xdp_direct_path.o`到openwrt设备上 
+  5. 拷贝其他脚本`deploy_direct_path.sh`、`import_domestic_max.sh`以及`load_china_ip.sh`等到openwrt设备上与`tc_direct_path.o`同目录
+  6. 部署: `./deploy_direct_path.sh start`
+  7. 载入国内IP库: `./load_china_ip.sh`
+  8. 载入国内与命库: `./import_domestic_max.sh`
 
 ## 恢复环境
 
-  1. 如需恢复环境执行`cleanup_env.sh`
+  1. 如需恢复环境执行`./deploy_direct_path.sh stop`
   
 ## 调试信息 
 
   1. 查看调试信息，可将代码中的打印打开，然后在`openwrt`设备上执行：`cat /sys/kernel/debug/tracing/trace_pipe`
-  2. 执行`monitor_hotpath.sh`脚本查看当前缓存存储的地址
-  3. 执行`check_cache.sh`查看缓存利用率信息
-
-## 缓存 
-
-  1. 查看缓存利用率，执行 `check_cache.sh`
-  2. 执行`monitor_hotpath.sh`脚本查看当前缓存存储的地址
+  2. 查看缓存利用率信息:`check_cache.sh`
+  3. 查看缓存利用率: `check_cache.sh`
+  4. 查看缓存内容: `monitor_hotpath.sh`
 
 ## 计划/目标
   > 暂无单独包装为某个发行版软件包或者openwrt带界面的插件的计划
