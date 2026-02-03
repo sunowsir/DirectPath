@@ -10,12 +10,16 @@
 set -euo pipefail
 
 # --- 配置参数 ---
+
+# 物理网口
 LAN_IF="eth1"
 WAN_IF="eth0"
 
+# eBPF程序
 TC_BPF_OBJ="${TC_BPF_OBJ:-tc_direct_path.o}"
 XDP_BPF_OBJ="${XDP_BPF_OBJ:-xdp_direct_path.o}"
 
+# eBPF
 TC_BPF_DIR="${TC_BPF_DIR:-/sys/fs/bpf/tc_progs}"
 XDP_BPF_DIR="${XDP_BPF_DIR:-/sys/fs/bpf/xdp_progs}"
 
@@ -60,17 +64,30 @@ readonly REQUIRED_CMDS=(bpftool tc nft mount umount ip)
 # --- 辅助函数 ---
 function info() { echo -e "\033[32mINFO:\033[0m $*"; }
 function err()  { echo -e "\033[31mERROR:\033[0m $*" >&2; }
+
+# 搜索指定目录下的eBPF共享内存
 function get_pin_path() {
+    if [[ -z "${1}" ]]; then 
+        return ;
+    fi
+
     local path
     path=$(find "${1}" -maxdepth 1 -type f -print -quit 2>/dev/null)
     echo "$path"
 }
 
+# 创建共享内存
+function do_create_map() {
+    bpftool map create "${1}" type "${2}" key "${3}" value "${4}" entries "${5}" name "${6}" flags "${7:-0}"
+}
+
+# TC 挂载程序清理
 function tc_pin_clean() {
     tc qdisc del dev "${LAN_IF}" clsact 2>/dev/null || true
     tc qdisc del dev "${WAN_IF}" clsact 2>/dev/null || true
 }
 
+# XDP 挂载程序清理
 function xdp_pin_clean() {
     ip link set dev "${LAN_IF}" xdp off 2>/dev/null || true
     bpftool net detach xdpgeneric dev "${LAN_IF}"
@@ -86,11 +103,7 @@ function env_check() {
     done
 }
 
-# --- 2. 创建 Map ---
-function do_create_map() {
-    bpftool map create "$1" type "$2" key "$3" value "$4" entries "$5" name "$6" flags "${7:-0}"
-}
-
+# 创建tc共享内存
 function create_tc_map() {
     info "创建 TC eBPF Maps..."
     
@@ -109,9 +122,9 @@ function create_tc_map() {
     do_create_map "${PREMAP_PIN}" lru_hash 4 16 "${PREMAP_SIZE}" "${PRE_MAPNAME}"
     do_create_map "${BLACKMAP_PIN}" lpm_trie 8 4 "${BLACKMAP_SIZE}" "${BLKLIST_MAPNAME}" 1
     do_create_map "${DIRECTMAP_PIN}" lpm_trie 8 4 "${DIRECTMAP_SIZE}" "${DIRECT_MAPNAME}" 1
-
 }
 
+# 创建xdp共享内存
 function create_xdp_map() {
     info "创建 XDP eBPF Maps..."
 
@@ -129,9 +142,9 @@ function create_xdp_map() {
     do_create_map "${DOMAINMAP_PIN}" lpm_trie 68 4 "${DOMAINMAP_SIZE}" "${DOMAIN_MAPNAME}" 1
 }
 
-# --- 3. 加载程序 ---
+# 挂载TC共享内存
 function load_tc_ebpf_prog() {
-    info "加载 TC BPF 程序..."
+    info "挂载TC共享内存"
 
     # 加载 TC
     bpftool prog loadall "${TC_BPF_OBJ}" "${TC_PROG_BASE}" \
@@ -146,11 +159,11 @@ function load_tc_ebpf_prog() {
         err "${TC_PROG_BASE} 下找不到已加载的 TC BPF 程序固定点，加载失败"
         exit 9
     fi
-
 }
 
+# 挂载XDP共享内存
 function load_xdp_ebpf_prog() {
-    info "加载 XDP BPF 程序..."
+    info "挂载XDP共享内存"
 
     # 加载 XDP
     bpftool prog loadall "${XDP_BPF_OBJ}" "${XDP_PROG_BASE}" \
@@ -164,7 +177,7 @@ function load_xdp_ebpf_prog() {
     fi
 }
 
-# --- TC 挂载 ---
+# 挂载TC程序
 function tc_pinning() {
     info "挂载 TC 过滤器至 ${LAN_IF} 和 ${WAN_IF}..."
 
@@ -187,7 +200,7 @@ function tc_pinning() {
     tc filter add dev "${WAN_IF}" egress bpf da pinned "${pin_path}"
 }
 
-# --- XDP 挂载 ---
+# 挂载XDP程序
 function xdp_pinning() {
     info "挂载 XDP 过滤器至 ${LAN_IF}..."
 
@@ -204,7 +217,7 @@ function xdp_pinning() {
     bpftool net attach xdpgeneric pinned "${pin_path}" dev "${LAN_IF}"
 }
 
-# --- 5. Nftables 联动 ---
+# 添加nft规则
 function nft_rule_set() {
     info "5. 配置 nftables 联动..."
     
