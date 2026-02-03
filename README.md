@@ -16,7 +16,7 @@
   5. 拷贝其他脚本`deploy_direct_path.sh`、`import_domestic_max.sh`以及`load_china_ip.sh`等到openwrt设备上与`tc_direct_path.o`同目录
   6. 部署: `./deploy_direct_path.sh start`
   7. 载入国内IP库: `./load_china_ip.sh`
-  8. 载入国内与命库: `./import_domestic_max.sh`
+  8. 载入国内域名库: `./import_domestic_max.sh`
 
 ## 恢复环境
 
