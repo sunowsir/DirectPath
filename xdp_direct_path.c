@@ -68,7 +68,7 @@ static __always_inline void udp_update_csum(__u16 old_val, __u16 new_val, __u16 
 }
 
 /* 私网检查函数 */
-static __always_inline int is_private_ip(__u32 ip) {
+static __always_inline __u8 is_private_ip(__u32 ip) {
     if ((bpf_ntohl(ip) & 0xFF000000) == 0x7F000000) return 1; // 127.0.0.0/8
     if ((bpf_ntohl(ip) & 0xFF000000) == 0x0A000000) return 1; // 10.0.0.0/8
     if ((bpf_ntohl(ip) & 0xFFF00000) == 0xAC100000) return 1; // 172.16.0.0/12
