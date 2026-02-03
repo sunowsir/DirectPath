@@ -43,6 +43,18 @@ struct {
     __type(value, domain_key_t);
 } domain_map_key SEC(".maps");
 
+static __always_inline void error_debug_info(void *cursor, domain_key_t *key, struct iphdr *ip) {
+    if (unlikely(NULL == cursor || NULL == key || NULL == ip)) return ;
+
+    bpf_printk("DNS [%s][%s] Ingress Match failed: %pI4 -> %pI4", cursor, key->domain, &ip->saddr, &ip->daddr);
+    bpf_printk("key->prefixlen: [%02x]", key->prefixlen);
+    #pragma unroll
+    for (int i = 0; i < 16; i++) {
+        bpf_printk("key->domain[%d]: [%02x]", i, key->domain[i]);
+    }
+    bpf_printk("\n");
+}
+
 /* 增量更新 UDP 校验和 (RFC 1624) */
 static __always_inline void udp_update_csum(__u16 old_val, __u16 new_val, __u16 *csum) {
     if (0 == *csum) return;
@@ -89,28 +101,23 @@ static __always_inline __u32 domain_copy(unsigned char *ptr, domain_key_t *key, 
     __u8 remaining_label_len = 0;
     #pragma unroll
     for (int i = 0; i < DOMAIN_MAX_LEN; i++) {
-        if ((void *)ptr + 1 > data_end) break;
-        if (0 == *ptr) break;
+        if (unlikely(((void *)ptr + 1 > data_end) || (0 == *ptr))) break;
 
         if (0 == remaining_label_len) {
-            if (*ptr > DNS_LABEL_MAX_LEN) {
-                ptr++;
-                continue;
-            }
-
+            if (*ptr > DNS_LABEL_MAX_LEN) goto loop_continue;
             remaining_label_len = *ptr;
-            key->domain[len++] = *ptr;
         } else {
             if (!is_valid_dns_char(*ptr)) {
-                ptr++;
                 remaining_label_len = 0;
-                continue;
+                goto loop_continue;
             }
 
-            key->domain[len++] = *ptr;
             remaining_label_len--;
         }
+        
+        key->domain[len++] = *ptr;
 
+loop_continue: 
         ptr++;
     }
 
@@ -121,9 +128,9 @@ static __always_inline void domain_reverse(domain_key_t *key, __u32 len) {
     if (unlikely(NULL == key)) return ;
 
     #pragma unroll
-    for (int i = 0; i < DOMAIN_MAX_LEN / 2; i++) {
+    for (int i = 0; i < DOMAIN_MAX_LEN >> 1; i++) {
         int j = len - 1 - i;
-        if (i >= j || j >= DOMAIN_MAX_LEN) break;
+        if (unlikely(i >= j || j >= DOMAIN_MAX_LEN)) break;
     
         char t = key->domain[i];
         key->domain[i] = key->domain[j];
@@ -160,7 +167,10 @@ static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void 
 
         /* 匹配 */
         __u32 *val = bpf_map_lookup_elem(&domain_map, key);
-        if (unlikely(!val)) return XDP_PASS;
+        if (unlikely(!val)) {
+            // error_debug_info(cursor, key, ip);
+            return XDP_PASS;
+        }
 
         __u16 check_val = udp->check;
 
@@ -169,10 +179,6 @@ static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void 
         __be16 new_dport = bpf_htons(DIRECT_DNS_SERVER_PORT);
         udp->dest = new_dport;
         udp_update_csum(old_dport, new_dport, &udp->check);
-
-        // bpf_printk("DNS Ingress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
-        // bpf_printk("Ingress [%s][%s] AFTER: %d -> %d\n", 
-        //     cursor, key->domain, bpf_ntohs(old_dport), bpf_ntohs(new_dport));
     } 
 
     return XDP_PASS;
