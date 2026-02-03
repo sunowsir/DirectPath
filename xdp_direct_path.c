@@ -77,7 +77,7 @@ static __always_inline int is_private_ip(__u32 ip) {
 }
 
 /* 域名字符合法性检查 */
-static __always_inline int is_valid_dns_char(unsigned char c) {
+static __always_inline __u8 is_valid_dns_char(unsigned char c) {
     if (c >= '0' && c <= '9') return 1;
     if (c >= 'a' && c <= 'z') return 1;
     if (c >= 'A' && c <= 'Z') return 1;
