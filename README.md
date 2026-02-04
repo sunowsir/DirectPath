@@ -25,9 +25,10 @@
 ## 调试信息 
 
   1. 查看调试信息，可将代码中的打印打开，然后在`openwrt`设备上执行：`cat /sys/kernel/debug/tracing/trace_pipe`
-  2. 查看缓存利用率信息:`check_cache.sh`
-  3. 查看缓存利用率: `check_cache.sh`
-  4. 查看缓存内容: `monitor_hotpath.sh`
+  2. 查看IP缓存利用率信息:`check_ip_cache.sh`
+  3. 查看域名缓存利用率信息:`check_domain_cache.sh`
+  4. 查看IP缓存内容: `monitor_hotpath_cache.sh`
+  5. 查看域名缓存内容: `monitor_domain_cache.sh`
 
 ## 计划/目标
   > 暂无单独包装为某个发行版软件包或者openwrt带界面的插件的计划

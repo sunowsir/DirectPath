@@ -9,7 +9,7 @@
 
 set -euo pipefail
 
-# --- 配置参数 ---
+# --- 配置参数 -- 确保与eBPF程序一致 ---
 
 # 物理网口
 LAN_IF="eth1"
@@ -32,6 +32,7 @@ HOTPATH_MAPNAME="${HOTPATH_MAPNAME:-hotpath_cache}"
 PRE_MAPNAME="${PRE_MAPNAME:-pre_cache}"
 BLKLIST_MAPNAME="${BLKLIST_MAPNAME:-blklist_ip_map}"
 DIRECT_MAPNAME="${DIRECT_MAPNAME:-direct_ip_map}"
+DOMAINCACHE_MAPNAME="${DOMAINCACHE_MAPNAME:-domain_cache}"
 DOMAIN_MAPNAME="${DOMAIN_MAPNAME:-domain_map}"
 
 # Map 固定路径
@@ -39,6 +40,7 @@ HOTPATHMAP_PIN="${TC_BPF_DIR}/${HOTPATH_MAPNAME}"
 PREMAP_PIN="${TC_BPF_DIR}/${PRE_MAPNAME}"
 BLACKMAP_PIN="${TC_BPF_DIR}/${BLKLIST_MAPNAME}"
 DIRECTMAP_PIN="${TC_BPF_DIR}/${DIRECT_MAPNAME}"
+DOMAINCACHE_PIN="${XDP_BPF_DIR}/${DOMAINCACHE_MAPNAME}"
 DOMAINMAP_PIN="${XDP_BPF_DIR}/${DOMAIN_MAPNAME}"
 
 # eBPF共享内存大小
@@ -46,6 +48,7 @@ HOTMAP_SIZE=${HOTMAP_SIZE:-65536}
 PREMAP_SIZE=${PREMAP_SIZE:-65536}
 BLACKMAP_SIZE=${BLACKMAP_SIZE:-8192}
 DIRECTMAP_SIZE=${DIRECTMAP_SIZE:-16384}
+DOMAINCACHE_SIZE=${DOMAINCACHE_SIZE:-8192}
 DOMAINMAP_SIZE=${DOMAINMAP_SIZE:-10485760}
 
 # 加速mark标记
@@ -139,6 +142,7 @@ function create_xdp_map() {
 
     mount -t bpf bpf "${XDP_BPF_DIR}" || { err "挂载 ${XDP_BPF_DIR} bpffs 失败"; exit 1; }
 
+    do_create_map "${DOMAINCACHE_PIN}" lru_hash 68 4 "${DOMAINCACHE_SIZE}" "${DOMAINCACHE_MAPNAME}" 
     do_create_map "${DOMAINMAP_PIN}" lpm_trie 68 4 "${DOMAINMAP_SIZE}" "${DOMAIN_MAPNAME}" 1
 }
 
@@ -168,6 +172,7 @@ function load_xdp_ebpf_prog() {
     # 加载 XDP
     bpftool prog loadall "${XDP_BPF_OBJ}" "${XDP_PROG_BASE}" \
         type xdp \
+        map name "${DOMAINCACHE_MAPNAME}" pinned "${DOMAINCACHE_PIN}" \
         map name "${DOMAIN_MAPNAME}" pinned "${DOMAINMAP_PIN}"
 
     pin_path=$(get_pin_path "${XDP_PROG_BASE}")

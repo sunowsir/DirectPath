@@ -25,6 +25,8 @@
 /* 单个域名标签支持的最大长度 */
 #define DNS_LABEL_MAX_LEN       63
 
+/* 国内域名HASH缓存库共享内存大小 */
+#define DOMAINPRE_MAP_SIZE      8192
 /* 国内域名库共享内存大小 */
 #define DOMAIN_MAP_SIZE         10485760
 
@@ -32,6 +34,14 @@ typedef struct domain_key {
     __u32 prefixlen;
     unsigned char domain[DOMAIN_MAX_LEN];
 } __attribute__((packed)) domain_key_t;
+
+/* 定义 LRU Hash Map 作为预缓存 */
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, DOMAINPRE_MAP_SIZE);
+    __uint(key_size, sizeof(domain_key_t));
+    __uint(value_size, sizeof(__u32));
+} domain_cache SEC(".maps");
 
 struct {
     __uint(type, BPF_MAP_TYPE_LPM_TRIE);
@@ -88,12 +98,12 @@ static __always_inline __u8 is_valid_dns_char(unsigned char c) {
 static __always_inline __u8 dns_pkt_check(unsigned char *dns_hdr, void *data_end) {
     if (unlikely(NULL == dns_hdr || NULL == data_end)) return 0;
 
-    // 检查数据包长度是否至少够 DNS Header + 最短域名(1字节长度+0字节结尾)
+    /* 检查数据包长度是否至少够 DNS Header + 最短域名(1字节长度+0字节结尾) */
     if ((void *)dns_hdr + 14 > data_end) return 0;
     
-    // 只处理 1 个查询的包。QDCOUNT 是 Header 的第 5-6 字节
+    /* 只处理 1 个查询的包。QDCOUNT 是 Header 的第 5-6 字节 */
     __u16 qdcount = bpf_ntohs(*(__u16 *)((void *)dns_hdr + 4));
-    // 如果不是1个查询，这种写死偏移的逻辑就不保险，直接放行
+    /* 如果不是1个查询，这种写死偏移的逻辑就不保险，直接放行 */
     if (qdcount != 1) return 0; 
 
     return 1;
@@ -127,7 +137,7 @@ static __always_inline __u32 domain_copy(unsigned char *ptr, domain_key_t *key, 
 }
 
 static __always_inline void domain_reverse(domain_key_t *key, __u32 len) {
-    if (unlikely(NULL == key)) return ;
+    if (unlikely(NULL == key || 0 == len)) return ;
 
     #pragma unroll
     for (int i = 0; i < DOMAIN_MAX_LEN >> 1; i++) {
@@ -140,6 +150,24 @@ static __always_inline void domain_reverse(domain_key_t *key, __u32 len) {
     }
 
     return ;
+}
+
+static __always_inline __u8 do_lookup_map(domain_key_t *key) {
+    if (unlikely(NULL == key)) return 0;
+
+    /* 命中缓存 */
+    if (bpf_map_lookup_elem(&domain_cache, key)) return 1;
+
+    /* 域名库中查不到 */
+    // error_debug_info(cursor, key, ip);
+    if (!bpf_map_lookup_elem(&domain_map, key)) return 0;
+
+    /* 命中域名库，写入缓存 */
+    __u32 val = 1;
+    bpf_map_update_elem(&domain_cache, key, &val, BPF_ANY);
+
+    return 1;
+
 }
 
 static __always_inline __u8 is_domain_match(struct iphdr *ip, struct udphdr *udp, void *data_end) {
@@ -165,11 +193,7 @@ static __always_inline __u8 is_domain_match(struct iphdr *ip, struct udphdr *udp
     domain_reverse(key, len);
 
     /* 匹配 */
-    __u32 *val = bpf_map_lookup_elem(&domain_map, key);
-    if (unlikely(!val)) {
-        // error_debug_info(cursor, key, ip);
-        return 0;
-    }
+    if (!do_lookup_map(key)) return 0;
 
     return 1;
 }

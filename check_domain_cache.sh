@@ -1,13 +1,13 @@
 #!/bin/bash
 #
-# File     : check_cache.sh
+# File     : check_domain_cache.sh
 # Author   : sun.wang
 # Mail     : sunowsir@163.com
 # Github   : github.com/sunowsir
-# Creation : 2026-01-21 14:24:02
+# Creation : 2026-02-04 15:39:18
 #
 
-MAP_PATH="/sys/fs/bpf/tc_progs/hotpath_cache"
+MAP_PATH="/sys/fs/bpf/xdp_progs/domain_cache"
 
 if [ ! -e "$MAP_PATH" ]; then
     echo "错误: 找不到 Map 文件 $MAP_PATH"
