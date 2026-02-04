@@ -10,13 +10,13 @@ export TARGET_INC=$OPENWRT_STAGING/target-x86_64_musl/usr/include
 export TOOLCHAIN_INC=$OPENWRT_STAGING/toolchain-x86_64_gcc-14.3.0_musl/usr/include
 
 # 3. 使用 SDK 中的 clang 编译
-$BPF_SDK/bin/clang -O2 -target bpf -g \
+$BPF_SDK/bin/clang -O3 -ffast-math -target bpf -g \
     -I$BPF_SDK/include \
     -I$TARGET_INC \
     -I$TOOLCHAIN_INC \
     -c tc_direct_path.c -o tc_direct_path.o
 
-$BPF_SDK/bin/clang -O2 -target bpf -g \
+$BPF_SDK/bin/clang -O3 -ffast-math -target bpf -g \
     -I$BPF_SDK/include \
     -I$TARGET_INC \
     -I$TOOLCHAIN_INC \

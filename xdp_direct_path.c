@@ -156,7 +156,11 @@ static __always_inline __u8 do_lookup_map(domain_key_t *key) {
     if (unlikely(NULL == key)) return 0;
 
     /* 命中缓存 */
-    if (bpf_map_lookup_elem(&domain_cache, key)) return 1;
+    __u32 *cache_val = bpf_map_lookup_elem(&domain_cache, key);
+    if (cache_val) {
+        __sync_fetch_and_add(cache_val, 1);
+        return 1;
+    }
 
     /* 域名库中查不到 */
     // error_debug_info(cursor, key, ip);
