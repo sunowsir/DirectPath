@@ -71,12 +71,19 @@ BEGIN { mode = "" }
             char_code = h2d(k_all[i])
             if (char_code >= 32 && char_code <= 126)
                 domain = domain sprintf("%c", char_code)
-            else
+            else if (i + 1 <= k_idx && k_all[i + 1] != "00")
                 domain = domain "."
         }
 
         # 解析 value (前 4 字节，小端序)
         val = h2d(v_all[1]) + (h2d(v_all[2]) * 256)
+
+        domain_len = length(domain)
+        reversed_domain = ""
+        for (i = domain_len; i >= 1; i--) {
+            reversed_domain = reversed_domain substr(domain, i, 1)
+        }
+        domain = reversed_domain
 
         if (plen > 0) {
             printf "%-40s | %-10d | %-5d\n", domain, plen, val
