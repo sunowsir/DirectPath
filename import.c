@@ -155,6 +155,4 @@ int main(int argc, char **argv) {
     const char *map_path = "/sys/fs/bpf/xdp_progs/domain_map";
 
     return import(map_path, rule_file);
-    
-    return 0;
 }
