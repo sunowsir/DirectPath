@@ -10,13 +10,13 @@
   > 若执`check_ip_cache.sh`发现IP缓存急速上涨并爆满，大概率是内网的P2P或PCDN服务导致
 
   1. 解压openwrt编译好的llvm工具链：`llvm-bpf-21.1.6.Linux-x86_64`
-  2. 将代码`tc_direct_path.c`、`dns_steer.c`和编译脚本`build.sh`拷贝到工具链目录中`llvm-bpf-21.1.6.Linux-x86_64/llvm-bpf/`
+  2. 将代码`tc_direct_path.c`、`dns_steer.c`、`import.c`和编译脚本`build.sh`拷贝到工具链目录中`llvm-bpf-21.1.6.Linux-x86_64/llvm-bpf/`
   3. 执行编译脚本`build.sh` 
-  4. 拷贝生成的`tc_direct_path.o`以及`xdp_direct_path.o`到openwrt设备上 
-  5. 拷贝其他脚本`deploy_direct_path.sh`、`import_domestic_max.sh`以及`load_china_ip.sh`等到openwrt设备上与`tc_direct_path.o`同目录
+  4. 拷贝编译产物`tc_direct_path.o`、`import_domains`以及`xdp_direct_path.o`到openwrt设备上 
+  5. 拷贝其他脚本`deploy_direct_path.sh`以及`load_china_ip.sh`等到openwrt设备上与`tc_direct_path.o`同目录
   6. 部署: `./deploy_direct_path.sh start`
   7. 载入国内IP库: `./load_china_ip.sh`
-  8. 载入国内域名库: `./import_domestic_max.sh`
+  8. 载入国内域名库: `./import_domains`
 
 ## 恢复环境
 
