@@ -1,6 +1,5 @@
 # --- 1. 路径配置 ---
 OPENWRT_STAGING := /home/openwrt/openwrt-25.12/staging_dir
-# 必须 export 环境变量，否则交叉编译器会报错
 export STAGING_DIR := $(OPENWRT_STAGING)
 
 BPF_SDK := /home/openwrt/llvm-bpf
