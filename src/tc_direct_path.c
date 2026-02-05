@@ -15,22 +15,24 @@
 #include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
 
-#define DIRECT_MARK 0x88
+#include "direct_path.h"
 
-#define CACHE_IP_MAP_SIZE       65536
-#define PRE_CACHE_IP_MAP_SIZE   65536
-#define BLKLIST_IP_MAP_SIZE     8192
-#define DIRECT_IP_MAP_SIZE      16384
-
-/* 总计收发20个包，且距离最开始的数据包的时间超过了 10秒，才被准入到缓存中 */
-#define HOTPKG_NUM              20
-#define HOTPKG_INV_TIME         10000000000ULL
-
-#define NORMAOL_DNS_PORT        53
-#define DIRECT_DNS_SERVER_PORT  15301
-
-#define DOMAIN_MAX_LEN          64
-#define DOMAIN_MAP_SIZE         10485760
+// #define DIRECT_MARK 0x88
+// 
+// #define CACHE_IP_MAP_SIZE       65536
+// #define PRE_CACHE_IP_MAP_SIZE   65536
+// #define BLKLIST_IP_MAP_SIZE     8192
+// #define DIRECT_IP_MAP_SIZE      16384
+// 
+// /* 总计收发20个包，且距离最开始的数据包的时间超过了 10秒，才被准入到缓存中 */
+// #define HOTPKG_NUM              20
+// #define HOTPKG_INV_TIME         10000000000ULL
+// 
+// #define NORMAOL_DNS_PORT        53
+// #define DIRECT_DNS_SERVER_PORT  15301
+// 
+// #define DOMAIN_MAX_LEN          64
+// #define DOMAIN_MAP_SIZE         10485760
 
 /* 定义 LRU Hash Map 作为缓存 */
 struct {

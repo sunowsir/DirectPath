@@ -15,20 +15,22 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
-/* 标准DNS端口 */
-#define NORMAOL_DNS_PORT        53
-/* 内网国内专用DNS服务器服务端口 */
-#define DIRECT_DNS_SERVER_PORT  15301
+#include "direct_path.h"
 
-/* 当前支持的最长的域名长度 */
-#define DOMAIN_MAX_LEN          64
-/* 单个域名标签支持的最大长度 */
-#define DNS_LABEL_MAX_LEN       63
-
-/* 国内域名HASH缓存库共享内存大小 */
-#define DOMAINPRE_MAP_SIZE      8192
-/* 国内域名库共享内存大小 */
-#define DOMAIN_MAP_SIZE         10485760
+// /* 标准DNS端口 */
+// #define NORMAOL_DNS_PORT        53
+// /* 内网国内专用DNS服务器服务端口 */
+// #define DIRECT_DNS_SERVER_PORT  15301
+// 
+// /* 当前支持的最长的域名长度 */
+// #define DOMAIN_MAX_LEN          64
+// /* 单个域名标签支持的最大长度 */
+// #define DNS_LABEL_MAX_LEN       63
+// 
+// /* 国内域名HASH缓存库共享内存大小 */
+// #define DOMAINPRE_MAP_SIZE      8192
+// /* 国内域名库共享内存大小 */
+// #define DOMAIN_MAP_SIZE         10485760
 
 typedef struct domain_key {
     __u32 prefixlen;
@@ -119,7 +121,7 @@ static __always_inline __u32 domain_copy(unsigned char *ptr, domain_key_t *key, 
         if (unlikely(((void *)ptr + 1 > data_end) || (0 == *ptr))) break;
 
         if (0 == remaining_label_len) {
-            if (*ptr > DNS_LABEL_MAX_LEN) continue;
+            if (*ptr >= DNS_LABEL_MAX_LEN) continue;
             remaining_label_len = *ptr;
         } else {
             if (!is_valid_dns_char(*ptr)) {

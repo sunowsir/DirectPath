@@ -16,16 +16,15 @@
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 
+#include "direct_path.h"
+
 #ifndef unlikely
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #endif
 
 /* 当前支持的最长的域名长度 */
-#define DOMAIN_MAX_LEN          64
-/* 单个域名标签支持的最大长度 */
-#define DNS_LABEL_MAX_LEN       63
+// #define DOMAIN_MAX_LEN          64
 
-#define FILE_LINE_MAXLEN        512
 
 // 定义与内核一致的 LPM Key 结构体
 typedef struct lpm_key {
@@ -139,7 +138,7 @@ int import(const char *map_path, const char *rule_file) {
 
     FILE *fp = fopen(rule_file, "r");
     if (!fp) {
-        perror("无法打开规则文件");
+        perror("[ERROR] 无法打开规则文件");
         return -1;
     }
 
