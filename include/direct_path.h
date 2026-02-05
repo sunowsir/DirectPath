@@ -43,5 +43,16 @@
 /* 规则文件单行最大长度 */
 #define FILE_LINE_MAXLEN        512
 
+/* rfc1035 */
+
+/* RFC1035标准DNS 头部长度 12个字节 */
+#define DNS_HEADER_BYTE                 12
+/* qdcount 在第 5 - 6 字节 */
+#define DNS_HEADER_QDCOUNT_BYTE_OFFSET  4
+/* 如果是请求，qr为0 */
+#define DNS_HEADER_QR_QUERY             0
+/* 如果是标准查询，opcode应当是0 */
+#define DNS_HEADER_OPCODE_STANDARD      0
+
 #endif
 

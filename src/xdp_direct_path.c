@@ -17,21 +17,6 @@
 
 #include "direct_path.h"
 
-// /* 标准DNS端口 */
-// #define NORMAOL_DNS_PORT        53
-// /* 内网国内专用DNS服务器服务端口 */
-// #define DIRECT_DNS_SERVER_PORT  15301
-// 
-// /* 当前支持的最长的域名长度 */
-// #define DOMAIN_MAX_LEN          64
-// /* 单个域名标签支持的最大长度 */
-// #define DNS_LABEL_MAX_LEN       63
-// 
-// /* 国内域名HASH缓存库共享内存大小 */
-// #define DOMAINPRE_MAP_SIZE      8192
-// /* 国内域名库共享内存大小 */
-// #define DOMAIN_MAP_SIZE         10485760
-
 typedef struct domain_key {
     __u32 prefixlen;
     unsigned char domain[DOMAIN_MAX_LEN];
@@ -97,16 +82,23 @@ static __always_inline __u8 is_valid_dns_char(unsigned char c) {
     return 0;
 }
 
-static __always_inline __u8 dns_pkt_check(unsigned char *dns_hdr, void *data_end) {
+static __always_inline __u8 dns_standard_query_pkt_check(unsigned char *dns_hdr, void *data_end) {
     if (unlikely(NULL == dns_hdr || NULL == data_end)) return 0;
 
     /* 检查数据包长度是否至少够 DNS Header + 最短域名(1字节长度+0字节结尾) */
-    if ((void *)dns_hdr + 14 > data_end) return 0;
+    if ((void *)dns_hdr + (DNS_HEADER_BYTE + 2) > data_end) return 0;
     
     /* 只处理 1 个查询的包。QDCOUNT 是 Header 的第 5-6 字节 */
-    __u16 qdcount = bpf_ntohs(*(__u16 *)((void *)dns_hdr + 4));
-    /* 如果不是1个查询，这种写死偏移的逻辑就不保险，直接放行 */
+    __u16 qdcount = bpf_ntohs(*(__u16 *)((void *)dns_hdr + DNS_HEADER_QDCOUNT_BYTE_OFFSET));
     if (qdcount != 1) return 0; 
+
+    /* 非请求不处理 */
+    __u8 qr = dns_hdr[2] >> 7;
+    if (unlikely(qr != DNS_HEADER_QR_QUERY)) return 0;
+
+    /* 非标准查询不处理 */
+    __u8 opcode = dns_hdr[2] >> 3 & 0x0F;
+    if (opcode != DNS_HEADER_OPCODE_STANDARD) return 0;
 
     return 1;
 }
@@ -180,7 +172,7 @@ static __always_inline __u8 is_domain_match(struct iphdr *ip, struct udphdr *udp
     if (unlikely(NULL == ip || NULL == udp || NULL == data_end)) return 0;
 
     unsigned char *dns_hdr = (void *)(udp + 1);
-    if (unlikely(!dns_pkt_check(dns_hdr, data_end))) return 0;
+    if (unlikely(!dns_standard_query_pkt_check(dns_hdr, data_end))) return 0;
 
     unsigned char *cursor = dns_hdr + 12;
 

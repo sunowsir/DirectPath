@@ -22,9 +22,6 @@
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #endif
 
-/* 当前支持的最长的域名长度 */
-// #define DOMAIN_MAX_LEN          64
-
 
 // 定义与内核一致的 LPM Key 结构体
 typedef struct lpm_key {
