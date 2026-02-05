@@ -59,6 +59,10 @@
 
 /* 规则文件单行最大长度 */
 #define FILE_LINE_MAXLEN        512
+/* 导入类型 域名 */
+#define IMPORT_TYPE_DOMAIN      "domain"
+/* 导入类型 IP */
+#define IMPORT_TYPE_IP          "ip"
 
 
 #endif

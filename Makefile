@@ -36,7 +36,7 @@ USER_CFLAGS   := -O3
 # --- 2. 目标文件定义 ---
 # 定义最终产物的路径
 BPF_PROGS     := $(TARGET_DIR)/tc_direct_path.o $(TARGET_DIR)/xdp_direct_path.o
-USER_BIN      := $(TARGET_DIR)/import_domains
+USER_BIN      := $(TARGET_DIR)/import
 
 .PHONY: all clean bpf user prepare
 

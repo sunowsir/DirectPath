@@ -53,20 +53,20 @@ add_bpf_programs(${BPF_SOURCES})
 add_custom_target(bpf_progs ALL DEPENDS ${BPF_ALL_OBJECTS})
 
 # --- 用户态程序编译 ---
-add_executable(import_domains ${USER_SOURCES})
+add_executable(import ${USER_SOURCES})
 
-target_include_directories(import_domains PRIVATE 
+target_include_directories(import PRIVATE 
     include 
     ${BPF_SDK}/include 
     ${TARGET_INC} 
     ${TOOLCHAIN_INC}
 )
 
-target_link_directories(import_domains PRIVATE ${LIB_DIR} ${INTL_LIB_DIR})
+target_link_directories(import PRIVATE ${LIB_DIR} ${INTL_LIB_DIR})
 
-target_link_libraries(import_domains PRIVATE bpf elf z intl)
+target_link_libraries(import PRIVATE bpf elf z intl)
 
-target_link_options(import_domains PRIVATE 
+target_link_options(import PRIVATE 
     "LINKER:-rpath-link=${LIB_DIR}"
     "LINKER:-rpath-link=${INTL_LIB_DIR}"
 )
