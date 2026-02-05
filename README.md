@@ -12,11 +12,10 @@
   1. 解压openwrt编译好的llvm工具链：`llvm-bpf-21.1.6.Linux-x86_64`
   2. 将代码`tc_direct_path.c`、`dns_steer.c`、`import.c`和`Makefile`拷贝到工具链目录中`llvm-bpf/`
   3. 编译: `make` 或使用cmake
-  4. 拷贝编译产物: `scp ./*.o ./import_domains root@address:~/path/to/`
-  5. 拷贝其他脚本`deploy_direct_path.sh`以及`load_china_ip.sh`等到openwrt设备上与编译产物同目录
+  4. 拷贝编译产物: `scp ./*.o ./import root@address:~/path/to/`
+  5. 拷贝其他脚本`deploy_direct_path.sh`以及`./load_rules.sh`等到openwrt设备上与编译产物同目录
   6. 部署: `./deploy_direct_path.sh start`
-  7. 载入国内IP库: `./load_china_ip.sh`
-  8. 载入国内域名库: `./import_domains`
+  7. 载入国内IP库和域名库: `./load_rules.sh`
 
 ## 恢复环境
 
