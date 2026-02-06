@@ -12,7 +12,7 @@
   2. `mkdir resource`
   3. 拷贝`llvm-bpf`以及openwrt编译目录的`staging_dir` 至 `resource`，或自行修改`Makefile`或`CMakeLists.txt`
   3. 编译: `make` 或`mkdir build && cd build && cmake .. && make`
-  4. 拷贝编译产至openwrt: `scp ./*.o ./import root@address:~/path/to/`
+  4. 拷贝编译产物至openwrt: `scp ./*.o ./import root@address:~/path/to/`
   5. 拷贝其他脚本`deploy_direct_path.sh`以及`./load_rules.sh`等到openwrt设备上与编译产物同目录
   6. 部署: `./deploy_direct_path.sh start`
   7. 载入国内IP库和域名库: `./load_rules.sh`
