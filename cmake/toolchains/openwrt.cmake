@@ -1,6 +1,6 @@
 set(CMAKE_SYSTEM_NAME Linux)
 
-# ⭐ 关键：让 try_compile 继承变量
+#  让 try_compile 继承变量
 set(CMAKE_TRY_COMPILE_PLATFORM_VARIABLES OPENWRT_SDK)
 
 # -------- SDK Root --------
