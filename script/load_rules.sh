@@ -17,14 +17,18 @@ function import_ip () {
     wget -q https://raw.githubusercontent.com/Hackl0us/GeoIP2-CN/release/CN-ip-cidr.txt  -O /tmp/CN-ip-cidr1.txt
     wget -q https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/ChinaMax/ChinaMax.list -O /tmp/ChinaMax.list
 
-    ./import "${IP_MAP_PATH}" "ip" "6" \
+    ./import "${IP_MAP_PATH}" "ip" "7" \
         "/etc/openclash/china_ip_route.ipset" \
         "/tmp/all_cn.html" \
         "/tmp/CN-ip-cidr.txt" \
         "/tmp/CN-ip-cidr1.txt" \
         "/tmp/ChinaMax.list" \
         "/etc/openclash/rule_provider/ChinaMax.yml" \
-        "${DOMAIN_MAP_PATH}" "domain" "2" "/tmp/ChinaMax.list" "/etc/openclash/rule_provider/ChinaMax.yml"
+        "/etc/openclash/rule_provider/rule-provider_Custom_Direct_Classical.yaml" \
+        "${DOMAIN_MAP_PATH}" "domain" "3" \
+        "/tmp/ChinaMax.list" \
+        "/etc/openclash/rule_provider/ChinaMax.yml" \
+        "/etc/openclash/rule_provider/rule-provider_Custom_Direct_Classical.yaml" 
 
     rm -rf /tmp/all_cn.html
     rm -rf /tmp/CN-ip-cidr.txt
