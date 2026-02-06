@@ -10,7 +10,7 @@
   1. `git clone https://github.com/sunowsir/DirectPath.git && cd DirectPath`
   2. `export OPENWRT_SDK=openwrt源码编译目录`、`export STAGING_DIR=${OPENWRT_SDK}/staging_dir`
   3. 编译: 
-        1. `cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/openwrt.cmake -DOPENWRT_SDK=$OPENWRT_SDK` 
+        1. `cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/openwrt.cmake -DOPENWRT_SDK=$OPENWRT_SDK` 
         2. `cmake --build build -j`
   4. 拷贝编译产物至openwrt: `scp ./build/bpf/*.o ./build/import root@openwrt地址:~/path/to/`
   5. 拷贝其他脚本至openwrt: `scp ./script/* root@openwrt地址:~/path/to/`
