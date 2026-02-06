@@ -1,6 +1,8 @@
 # --- 1. 路径与环境配置 ---
-G_HOME          := /home/sun/.podman/ubuntu/home/openwrt
-OPENWRT_STAGING := $(G_HOME)/openwrt-25.12/staging_dir
+# G_HOME          := /home/sun/.podman/ubuntu/home/openwrt
+G_HOME          := $(CURDIR)/resource
+# OPENWRT_STAGING := $(G_HOME)/openwrt-25.12/staging_dir
+OPENWRT_STAGING := $(G_HOME)/staging_dir
 export STAGING_DIR := $(OPENWRT_STAGING)
 
 BPF_SDK := $(G_HOME)/llvm-bpf
