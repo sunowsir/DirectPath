@@ -30,6 +30,11 @@ typedef struct {
     __u32 count;      // 累计包量
 } pre_val_t;
 
+typedef struct {
+    __u32 prefixlen;
+    __u32 ipv4;
+} lpm_key_t;
+
 /* 定义 LRU Hash Map 作为预缓存 */
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
@@ -42,15 +47,10 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_LPM_TRIE);
     __uint(max_entries, BLKLIST_IP_MAP_SIZE);
-    __uint(key_size, 8);
+    __uint(key_size, sizeof(lpm_key_t));
     __uint(value_size, 4);
     __uint(map_flags, BPF_F_NO_PREALLOC);
 } blklist_ip_map SEC(".maps");
-
-typedef struct {
-    __u32 prefixlen;
-    __u32 ipv4;
-} lpm_key_t;
 
 /* 国内 IP 白名单 (LPM) */
 struct {
@@ -60,6 +60,7 @@ struct {
     __uint(value_size, 4);
     __uint(map_flags, BPF_F_NO_PREALLOC);
 } direct_ip_map SEC(".maps");
+
 
 /* 私网检查函数 */
 static __always_inline int is_private_ip(__u32 ip) {
