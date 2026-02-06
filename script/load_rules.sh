@@ -16,6 +16,7 @@ function import_ip () {
     wget -q https://raw.githubusercontent.com/soffchen/GeoIP2-CN/release/CN-ip-cidr.txt -O /tmp/CN-ip-cidr.txt
     wget -q https://raw.githubusercontent.com/Hackl0us/GeoIP2-CN/release/CN-ip-cidr.txt  -O /tmp/CN-ip-cidr1.txt
     wget -q https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/master/rule/Surge/ChinaMax/ChinaMax.list -O /tmp/ChinaMax.list
+    wget -q https://raw.githubusercontent.com/blackmatrix7/ios_rule_script/refs/heads/master/rule/Clash/ChinaMax/ChinaMax.list -O /tmp/ChinaMax.list.1
     wget -q https://raw.githubusercontent.com/Aethersailor/Custom_OpenClash_Rules/refs/heads/main/rule/Custom_Direct.list  -O /tmp/Custom_Direct.list
 
     ./import "${IP_MAP_PATH}" "ip" "7" \
@@ -24,17 +25,18 @@ function import_ip () {
         "/tmp/CN-ip-cidr.txt" \
         "/tmp/CN-ip-cidr1.txt" \
         "/tmp/ChinaMax.list" \
-        "/etc/openclash/rule_provider/ChinaMax.yml" \
+        "/tmp/ChinaMax.list.1" \
         "/tmp/Custom_Direct.list" \
         "${DOMAIN_MAP_PATH}" "domain" "3" \
         "/tmp/ChinaMax.list" \
-        "/etc/openclash/rule_provider/ChinaMax.yml" \
+        "/tmp/ChinaMax.list.1" \
         "/tmp/Custom_Direct.list" 
 
     rm -rf /tmp/all_cn.html
     rm -rf /tmp/CN-ip-cidr.txt
     rm -rf /tmp/CN-ip-cidr1.txt 
     rm -rf /tmp/ChinaMax.list
+    rm -rf /tmp/ChinaMax.list.1
     rm -rf /tmp/Custom_Direct.list
 }
 
