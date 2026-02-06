@@ -129,6 +129,31 @@ int import_map_domain(FILE *fp, int map_fd, __u32 *rule_num) {
     return 0;
 }
 
+bool ipv4_cidr_check(char *buf) {
+    if (unlikely(NULL == buf)) return false;
+
+    __u8 nums_num = 0;
+    __u8 dot_num = 0;
+    __u8 separator_num = 0;
+
+    for (char *p = buf; *p != '\0'; p++) {
+        if (NULL == p) return false;
+
+        if (*p >= '0' && *p <= '9') nums_num++;
+        else if (*p == '.') dot_num++;
+        else if (*p == '/') separator_num++;
+        else { *p = '\0'; break; }
+    }
+
+    // printf("[DEBUG] buf: [%s], [%d][%d][%d]\n", buf, nums_num, dot_num, separator_num);
+
+    if (nums_num < IPV4_CIDR_NUMS_MIN_NUM || nums_num > IPV4_CIDR_NUMS_MAX_NUM) return false;
+    if (dot_num != IPV4_ADDR_DOT_MAX_NUM) return false;
+    if (separator_num != IPV4_CIDR_SEP_MAX_NUM) return false;
+
+    return true;
+}
+
 /**
  * 将 CIDR 字符串解析并填充至 BPF LPM Key
  * @param cidr_raw  输入如 "  192.168.1.0/24 \t"
@@ -143,7 +168,7 @@ bool parse_cidr_to_lpm_key(const char *cidr_raw, ip_lpm_key_t *key) {
     while (isspace((unsigned char)*start)) start++;
     if (*start == '\0') return false;
 
-    char buf[64];
+    char buf[64] = {0};
     strncpy(buf, start, sizeof(buf) - 1);
     buf[sizeof(buf) - 1] = '\0';
 
@@ -153,28 +178,23 @@ bool parse_cidr_to_lpm_key(const char *cidr_raw, ip_lpm_key_t *key) {
         end_ptr--;
     }
 
+    if (!ipv4_cidr_check(buf)) return false;
+
     /* Split: 分离 IP 和掩码 */
     char *slash = strchr(buf, '/');
-    int prefix = 32; // 默认 /32
-    if (slash) {
-        *slash = '\0';
-        prefix = atoi(slash + 1);
-    }
+    if (!slash) return false;
 
-    if (prefix < 0 || prefix > 32) return false;
+    *slash = '\0';
+    key->prefixlen = atoi(slash + 1);
+    if (key->prefixlen < 0 || key->prefixlen > 32) return false;
 
     /* Parse & Fill */
     struct in_addr addr;
-    if (inet_pton(AF_INET, buf, &addr) != 1) {
-        return false;
-    }
-
-    /* LPM Trie 的 prefixlen 必须是位长度 */
-    key->prefixlen = (uint32_t)prefix;
+    if (inet_pton(AF_INET, buf, &addr) != 1) return false;
     
     /* ipv4 存储的是网络字节序，且通常需要掩掉主机位（虽然内核会处理，但规范做法是清零） */
     uint32_t host_ip = ntohl(addr.s_addr);
-    uint32_t mask = (prefix == 0) ? 0 : (~0U << (32 - prefix));
+    uint32_t mask = (key->prefixlen == 0) ? 0 : (~0U << (32 - key->prefixlen));
     key->ipv4 = htonl(host_ip & mask);
 
     return true;
@@ -228,11 +248,10 @@ int import(const char *import_type, const char *map_path, const char *rule_file)
 
     int ret = 0;
     __u32 rule_num = 0;
-    if (!strcmp(import_type, IMPORT_TYPE_DOMAIN)) {
+    if (!strcmp(import_type, IMPORT_TYPE_DOMAIN)) 
         ret = import_map_domain(fp, map_fd, &rule_num);
-    } else if (!strcmp(import_type, IMPORT_TYPE_IP)) {
+    else if (!strcmp(import_type, IMPORT_TYPE_IP)) 
         ret = import_map_ip(fp, map_fd, &rule_num);
-    }
 
     if (fp != NULL) fclose(fp);
 
@@ -241,13 +260,9 @@ int import(const char *import_type, const char *map_path, const char *rule_file)
     return ret;
 }
 
-int main(int argc, char **argv) {
-    if (argc <= 2) {
-        const char *rule_file = "/etc/openclash/rule_provider/ChinaMax.yml";
-        const char *map_path = "/sys/fs/bpf/xdp_progs/domain_map";
-
-        return import(IMPORT_TYPE_DOMAIN, map_path, rule_file);
-    }
+int args_parse(int argc, char **argv) {
+    if (argc < IMPORT_ARGS_MIN_VALID_NUM) 
+        return import(IMPORT_TYPE_DOMAIN, IMPORT_DEFULE_MAP, IMPORT_DEFAULT_RULE_FILE);
 
     for (int i = 1; i < argc; i++) {
         const char *map_path = argv[i++];
@@ -295,4 +310,8 @@ int main(int argc, char **argv) {
     }
 
     return 0;
+}
+
+int main(int argc, char **argv) {
+    return args_parse(argc, argv);
 }

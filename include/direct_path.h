@@ -46,23 +46,37 @@
 
 
 /* 标准DNS端口 */
-#define NORMAOL_DNS_PORT        53
+#define NORMAOL_DNS_PORT                53
 /* 内网国内专用DNS服务器服务端口 */
-#define DIRECT_DNS_SERVER_PORT  15301
+#define DIRECT_DNS_SERVER_PORT          15301
 
 /* 直连流量标记 */
-#define DIRECT_MARK             0x88
+#define DIRECT_MARK                     0x88
 
 /* 总计收发20个包，且距离最开始的数据包的时间超过了 10秒，才被准入到缓存中 */
-#define HOTPKG_NUM              20
-#define HOTPKG_INV_TIME         10000000000ULL
+#define HOTPKG_NUM                      20
+#define HOTPKG_INV_TIME                 10000000000ULL
 
 /* 规则文件单行最大长度 */
-#define FILE_LINE_MAXLEN        512
+#define FILE_LINE_MAXLEN                512
 /* 导入类型 域名 */
-#define IMPORT_TYPE_DOMAIN      "domain"
+#define IMPORT_TYPE_DOMAIN              "domain"
 /* 导入类型 IP */
-#define IMPORT_TYPE_IP          "ip"
+#define IMPORT_TYPE_IP                  "ip"
+/* 规则导入程序当前设计的，有效的最小参数个数 */
+#define IMPORT_ARGS_MIN_VALID_NUM       4
+/* 默认导入目标共享内存 */
+#define IMPORT_DEFULE_MAP               "/sys/fs/bpf/xdp_progs/domain_map"
+/* 默认规则文件 */
+#define IMPORT_DEFAULT_RULE_FILE        "/etc/openclash/rule_provider/ChinaMax.yml"
+/* ipv4 网段 CIDR格式包含的最少数量数字，1.1.1.1/8 */
+#define IPV4_CIDR_NUMS_MIN_NUM          5
+/* ipv4 网段 CIDR格式包含的最多数量数字，192.168.122.122/24 */
+#define IPV4_CIDR_NUMS_MAX_NUM          14
+/* ipv4 包含三个点 */
+#define IPV4_ADDR_DOT_MAX_NUM           3
+/* ipv4 网段 CIDR格式 包含一个/ */
+#define IPV4_CIDR_SEP_MAX_NUM           1
 
 
 #endif
