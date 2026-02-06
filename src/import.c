@@ -145,8 +145,6 @@ bool ipv4_cidr_check(char *buf) {
         else { *p = '\0'; break; }
     }
 
-    // printf("[DEBUG] buf: [%s], [%d][%d][%d]\n", buf, nums_num, dot_num, separator_num);
-
     if (nums_num < IPV4_CIDR_NUMS_MIN_NUM || nums_num > IPV4_CIDR_NUMS_MAX_NUM) return false;
     if (dot_num != IPV4_ADDR_DOT_MAX_NUM) return false;
     if (separator_num != IPV4_CIDR_SEP_MAX_NUM) return false;
