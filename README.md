@@ -3,16 +3,16 @@
 > 1. 直连流量加速引擎：利用ebpf实现国内IP流量快速转发
 > 2. 直连DNS加速引擎：利用ebpf实现国内域名DNS请求不受openclash等软件的控制直达openwrt上部署的dns服务器
 > 
-> :warning:请详细阅读代码，根据自身需求修改宏定义配置以及其他代码，请勿直接使用，后果自负
 > 
 
 ## 部署方法
   > 若执`check_ip_cache.sh`发现IP缓存急速上涨并爆满，大概率是内网的P2P或PCDN服务导致
 
-  1. 解压openwrt编译好的llvm工具链：`llvm-bpf-21.1.6.Linux-x86_64`
-  2. 将代码`tc_direct_path.c`、`dns_steer.c`、`import.c`和`Makefile`拷贝到工具链目录中`llvm-bpf/`
-  3. 编译: `make` 或使用cmake
-  4. 拷贝编译产物: `scp ./*.o ./import root@address:~/path/to/`
+  1. `git clone https://github.com/sunowsir/DirectPath.git && cd DirectPath`
+  2. `mkdir resource`
+  3. 拷贝`llvm-bpf`以及openwrt编译目录的`staging_dir` 至 `resource`，或自行修改`Makefile`或`CMakeLists.txt`
+  3. 编译: `make` 或`mkdir build && cd build && cmake .. && make`
+  4. 拷贝编译产至openwrt: `scp ./*.o ./import root@address:~/path/to/`
   5. 拷贝其他脚本`deploy_direct_path.sh`以及`./load_rules.sh`等到openwrt设备上与编译产物同目录
   6. 部署: `./deploy_direct_path.sh start`
   7. 载入国内IP库和域名库: `./load_rules.sh`
@@ -33,3 +33,7 @@
   > 暂无单独包装为某个发行版软件包或者openwrt带界面的插件的计划
 
   1. 支持IPv6
+
+## 声明 :warning:
+
+  1. 请详细阅读代码，根据自身需求修改宏定义配置以及其他代码，请勿直接使用，后果自负

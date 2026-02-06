@@ -1,8 +1,10 @@
 cmake_minimum_required(VERSION 3.10)
 
 # --- 环境配置 ---
-set(G_HOME "/home/sun/.podman/ubuntu/home/openwrt")
-set(OPENWRT_STAGING "${G_HOME}/openwrt-25.12/staging_dir")
+#set(G_HOME "/home/sun/.podman/ubuntu/home/openwrt")
+set(G_HOME "${CMAKE_CURRENT_LIST_DIR}/resource")
+# set(OPENWRT_STAGING "${G_HOME}/openwrt-25.12/staging_dir")
+set(OPENWRT_STAGING "${G_HOME}/staging_dir")
 set(BPF_SDK "${G_HOME}/llvm-bpf")
 
 # 编译阶段：使用 Launcher
