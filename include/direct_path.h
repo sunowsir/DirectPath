@@ -77,6 +77,12 @@
 #define IPV4_ADDR_DOT_MAX_NUM           3
 /* ipv4 网段 CIDR格式 包含一个/ */
 #define IPV4_CIDR_SEP_MAX_NUM           1
+/* 国内ipv4地址规则集标记 */
+#define RULE_IP                         "IP-CIDR,"
+/* 国内域名规则集标记 */
+#define RULE_DOMAIN                     "DOMAIN,"
+#define RULE_DOMAIN_KEYWORD             "DOMAIN-KEYWORD,"
+#define RULE_DOMAIN_SUFFIX              "DOMAIN-SUFFIX,"
 
 
 #endif

@@ -6,6 +6,7 @@
  * Creation : 2026-02-05 14:08:37
 */
 
+#include <linux/stddef.h>
 #include <stdio.h>
 #include <errno.h>
 #include <ctype.h>
@@ -38,6 +39,17 @@ typedef struct {
     __u32 ipv4;
 } ip_lpm_key_t;
 
+static __always_inline void del_head_space_char(char *line, char **res) {
+    if (unlikely(NULL == line || NULL == res)) return ;
+    *res = NULL;
+
+    char *start = line;
+    while (isspace((unsigned char)*start)) start++;
+    *res = start;
+
+    return ;
+}
+
 
 /**
  * DNS 编码并反转数据。
@@ -45,7 +57,7 @@ typedef struct {
  */
 bool domain_encode_and_reverse(const char *domain, domain_lpm_key_t *key) {
     int pos = 0;
-    char buf[256] = {0};
+    char buf[FILE_LINE_MAXLEN] = {0};
     uint8_t temp[DOMAIN_MAX_LEN] = {0};
 
     strncpy(buf, domain, sizeof(buf));
@@ -77,24 +89,32 @@ bool domain_encode_and_reverse(const char *domain, domain_lpm_key_t *key) {
 bool import_map_domain_by_line(char *line, int map_fd) {
     if (unlikely(NULL == line || map_fd <= 0)) return false;
 
-    if (strstr(line, "payload:") || line[0] == '#') return false;
-    if (!strstr(line, "DOMAIN") && !strstr(line, "PROCESS-NAME")) return false;
+    /* 去掉前面空白字符 */
+    char *start = NULL;
+    del_head_space_char(line, &start);
+    if ('\0' == *start) return false;
+
+    if (strstr(start, "payload:") || line[0] == '#') return false;
+    if (!strstr(start, RULE_DOMAIN) && 
+        !strstr(start, RULE_DOMAIN_KEYWORD) && 
+        !strstr(start, RULE_DOMAIN_SUFFIX)) return false;
 
     domain_lpm_key_t key;
     key.prefixlen = 24;
     memset(key.domain, 0, sizeof(key.domain));
 
     /* 简易 YAML 解析：提取域名部分 */
-    char *ptr = strchr(line, ',');
+    char *ptr = strchr(start, ',');
     char *target = NULL;
     if (ptr) {
         target = strtok(ptr + 1, " \t\n\r\"");
     } else {
-        ptr = strchr(line, '-');
+        ptr = strchr(start, '-');
         if (ptr) target = strtok(ptr + 1, " \t\n\r\"");
     }
 
-    if (!target || !strchr(target, '.')) return false;
+    if (!target) return false;
+
     if (!domain_encode_and_reverse(target, &key)) return false;
 
     uint32_t value = 1;
@@ -159,18 +179,19 @@ bool ipv4_cidr_check(char *buf) {
  * @param key       输出：构造好的 BPF Key 结构体
  * @return          成功返回 true, 失败返回 false
  */
-bool parse_cidr_to_lpm_key(const char *cidr_raw, ip_lpm_key_t *key) {
+bool parse_cidr_to_lpm_key(char *cidr_raw, ip_lpm_key_t *key) {
     if (!cidr_raw || !key) return false;
 
-    /* Trim: 去掉前后空白 */
-    const char *start = cidr_raw;
-    while (isspace((unsigned char)*start)) start++;
-    if (*start == '\0') return false;
+    /* 去掉前面空白字符 */
+    char *start = NULL;
+    del_head_space_char(cidr_raw, &start);
+    if ('\0' == *start) return false;
 
-    char buf[64] = {0};
+    char buf[FILE_LINE_MAXLEN] = {0};
     strncpy(buf, start, sizeof(buf) - 1);
     buf[sizeof(buf) - 1] = '\0';
 
+    /* 去掉尾部空白字符 */
     char *end_ptr = buf + strlen(buf) - 1;
     while (end_ptr > buf && isspace((unsigned char)*end_ptr)) {
         *end_ptr = '\0';
@@ -179,7 +200,7 @@ bool parse_cidr_to_lpm_key(const char *cidr_raw, ip_lpm_key_t *key) {
 
     if (!ipv4_cidr_check(buf)) return false;
 
-    /* Split: 分离 IP 和掩码 */
+    /*  分离 IP 和掩码 */
     char *slash = strchr(buf, '/');
     if (!slash) return false;
 
@@ -203,8 +224,15 @@ bool import_map_ip_by_line(char *line, int map_fd) {
     if (unlikely(NULL == line || map_fd <= 0)) return false;
     if (line[0] == '#') return false;
 
+    char *start_line = strstr(line, RULE_IP);
+    if (NULL == start_line) start_line = line;
+    else {
+        start_line = strchr(line, ',');
+        start_line++;
+    }
+
     ip_lpm_key_t key;
-    if (!parse_cidr_to_lpm_key(line, &key)) return false;
+    if (!parse_cidr_to_lpm_key(start_line, &key)) return false;
 
     uint32_t value = 1;
     int ret = bpf_map_update_elem(map_fd, &key, &value, BPF_ANY);
