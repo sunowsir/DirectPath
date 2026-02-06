@@ -1,3 +1,5 @@
-build
-resource
-.cache
+build/
+.cache/
+CMakeFiles/
+toolchains/
+CMakeCache.txt

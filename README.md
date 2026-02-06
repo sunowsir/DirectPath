@@ -3,23 +3,23 @@
 > 1. 直连流量加速引擎：利用ebpf实现国内IP流量快速转发
 > 2. 直连DNS加速引擎：利用ebpf实现国内域名DNS请求不受openclash等软件的控制直达openwrt上部署的dns服务器
 > 
-> 
 
 ## 部署方法
   > 若执`check_ip_cache.sh`发现IP缓存急速上涨并爆满，大概率是内网的P2P或PCDN服务导致
 
   1. `git clone https://github.com/sunowsir/DirectPath.git && cd DirectPath`
-  2. `mkdir resource`
-  3. 拷贝`llvm-bpf`以及openwrt编译目录的`staging_dir` 至 `resource`，或自行修改`Makefile`或`CMakeLists.txt`
-  3. 编译: `make` 或`mkdir build && cd build && cmake .. && make`
-  4. 拷贝编译产物至openwrt: `scp ./*.o ./import root@address:~/path/to/`
-  5. 拷贝其他脚本`deploy_direct_path.sh`以及`./load_rules.sh`等到openwrt设备上与编译产物同目录
+  2. `export OPENWRT_SDK=openwrt源码编译目录`、`export STAGING_DIR=${OPENWRT_SDK}/staging_dir`
+  3. 编译: 
+    1. `cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/openwrt.cmake -DOPENWRT_SDK=$OPENWRT_SDK` 
+    2. `cmake --build build -j`
+  4. 拷贝编译产物至openwrt: `scp ./build/bpf/*.o ./build/import root@openwrt地址:~/path/to/`
+  5. 拷贝其他脚本至openwrt: `scp ./script/* root@openwrt地址:~/path/to/`
   6. 部署: `./deploy_direct_path.sh start`
   7. 载入国内IP库和域名库: `./load_rules.sh`
 
 ## 恢复环境
 
-  1. 如需恢复环境执行`./deploy_direct_path.sh stop`
+  1. `./deploy_direct_path.sh stop`
   
 ## 调试信息 
 
