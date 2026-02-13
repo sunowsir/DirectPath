@@ -49,8 +49,10 @@ struct {
 static __always_inline void error_debug_info(void *cursor, domain_key_t *key, struct iphdr *ip) {
     if (unlikely(NULL == cursor || NULL == key || NULL == ip)) return ;
 
-    bpf_printk("DNS [%s][%s] Ingress Match failed: %pI4 -> %pI4", cursor, key->domain, &ip->saddr, &ip->daddr);
+    bpf_printk("DNS [%s][%s] Ingress Match failed: %pI4 -> %pI4", 
+        cursor, key->domain, &ip->saddr, &ip->daddr);
     bpf_printk("key->prefixlen: [%02x]", key->prefixlen);
+
     #pragma unroll
     for (int i = 0; i < 16; i++) {
         bpf_printk("key->domain[%d]: [%02x]", i, key->domain[i]);
@@ -166,7 +168,6 @@ static __always_inline __u8 do_lookup_map(domain_key_t *key) {
     bpf_map_update_elem(&domain_cache, key, &val, BPF_ANY);
 
     return 1;
-
 }
 
 static __always_inline __u8 is_domain_match(struct iphdr *ip, struct udphdr *udp, void *data_end) {
@@ -230,7 +231,7 @@ int xdp_direct_path(struct xdp_md *ctx) {
     void *data_end = (void *)(long)ctx->data_end;
     void *data = (void *)(long)ctx->data;
 
-    // --- 解析头部  ---
+    /* 解析头部 */
     struct ethhdr *eth = data;
     if ((unlikely((void *)(eth + 1) > data_end))) return XDP_PASS;
     if (unlikely(eth->h_proto != bpf_htons(ETH_P_IP))) return XDP_PASS;

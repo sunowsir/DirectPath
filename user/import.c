@@ -294,13 +294,13 @@ int args_parse(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         const char *map_path = argv[i++];
         if (NULL == map_path) {
-            perror("[ERROR] 参数错误 map_path，Usage: import [map path] [domain/ip] [rule file num] [file1] [file2] ...");
+            perror("[ERROR] 参数错误 map_path，" EXPORT_PROG_USAGE);
             return -1;
         }
 
         const char *import_type = argv[i++];
         if (NULL == import_type) {
-            perror("[ERROR] 参数错误 import_type NULL，Usage: import [map path] [domain/ip] [rule file num] [file1] [file2] ...");
+            perror("[ERROR] 参数错误 import_type NULL，" EXPORT_PROG_USAGE);
             return -1;
         }
 
@@ -308,21 +308,20 @@ int args_parse(int argc, char **argv) {
             strcmp(import_type, IMPORT_TYPE_IP)) {
             fprintf(stderr, 
                 "[ERROR] 参数错误 import_type argv[%d] = [%s]，"
-                "Usage: import [map path] [domain/ip] [rule file num] [file1] [file2] ...\n",
-                i, import_type);
+                EXPORT_PROG_USAGE, i, import_type);
             return -1;
         }
 
         __u32 rule_file_num = atoi(argv[i++]);
         if (!rule_file_num) {
-            perror("[ERROR] 参数错误 rule file num，Usage: import [map path] [domain/ip] [rule file num] [file1] [file2] ...");
+            perror("[ERROR] 参数错误 rule file num，" EXPORT_PROG_USAGE);
             return -1;
         }
 
         for (int j = i; j < i + rule_file_num; j++) {
             const char *rule_file = argv[j];
             if (NULL == rule_file) {
-                perror("[ERROR] 参数错误 rule file NULL，Usage: import [map path] [domain/ip] [rule file num] [file1] [file2] ...");
+                perror("[ERROR] 参数错误 rule file NULL，" EXPORT_PROG_USAGE);
                 return -1;
             }
 

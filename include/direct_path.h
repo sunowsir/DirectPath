@@ -85,4 +85,6 @@
 #define RULE_DOMAIN_SUFFIX              "DOMAIN-SUFFIX,"
 
 
+#define EXPORT_PROG_USAGE               "Usage: import [map path] [domain/ip] [rule file num] [file1] [file2] ..."
+
 #endif

@@ -154,12 +154,12 @@ static __always_inline int do_lookup_dns(struct __sk_buff *skb, struct iphdr *ip
 
     if (udp->source != bpf_htons(DIRECT_DNS_SERVER_PORT)) return TC_ACT_OK;
 
-    // 回程包
+    /* 回程包 */
     __u16 check_val = udp->check;
     __be16 old_sport = udp->source;
     __be16 new_sport = bpf_htons(NORMAOL_DNS_PORT);
 
-    // 1. 修改端口
+    /* 修改端口 */
     __u32 offset = sizeof(struct ethhdr) + sizeof(struct iphdr) + offsetof(struct udphdr, source);
     bpf_skb_store_bytes(skb, offset, &new_sport, sizeof(new_sport), 0);
 
@@ -168,7 +168,7 @@ static __always_inline int do_lookup_dns(struct __sk_buff *skb, struct iphdr *ip
         bpf_l4_csum_replace(skb, offset, old_sport, new_sport, sizeof(new_sport));
     }
 
-    // 调试打印可按需开启
+    /* 调试打印可按需开启 */
     // bpf_printk("DNS Egress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
     // bpf_printk("Egress AFTER: %d -> %d\n", bpf_ntohs(old_sport), bpf_ntohs(new_sport));
 
