@@ -6,34 +6,22 @@
  * Creation : 2026-01-29 10:51:35
 */
 
-#include <linux/bpf.h>
-#include <linux/if_ether.h>
-#include <linux/ip.h>
-#include <linux/udp.h>
-#include <linux/in.h>
-#include <linux/pkt_cls.h>
-#include <bpf/bpf_helpers.h>
-#include <bpf/bpf_endian.h>
 
+#define EBPF_KERNEL_PROJ
 #include "direct_path.h"
-
-typedef struct domain_key {
-    __u32 prefixlen;
-    unsigned char domain[DOMAIN_MAX_LEN];
-} __attribute__((packed)) domain_key_t;
 
 /* 定义 LRU Hash Map 作为预缓存 */
 struct {
     __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __uint(max_entries, DOMAINPRE_MAP_SIZE);
-    __uint(key_size, sizeof(domain_key_t));
+    __uint(key_size, sizeof(domain_lpm_key_t));
     __uint(value_size, sizeof(__u32));
 } domain_cache SEC(".maps");
 
 struct {
     __uint(type, BPF_MAP_TYPE_LPM_TRIE);
     __uint(max_entries, DOMAIN_MAP_SIZE);
-    __type(key, domain_key_t);
+    __type(key, domain_lpm_key_t);
     __type(value, __u32);
     __uint(map_flags, BPF_F_NO_PREALLOC);
 } domain_map SEC(".maps");
@@ -42,11 +30,11 @@ struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
     __uint(max_entries, 1);
     __type(key, __u32);
-    __type(value, domain_key_t);
+    __type(value, domain_lpm_key_t);
 } domain_map_key SEC(".maps");
 
 
-static __always_inline void error_debug_info(void *cursor, domain_key_t *key, struct iphdr *ip) {
+static __always_inline void error_debug_info(void *cursor, domain_lpm_key_t *key, struct iphdr *ip) {
     if (unlikely(NULL == cursor || NULL == key || NULL == ip)) return ;
 
     bpf_printk("DNS [%s][%s] Ingress Match failed: %pI4 -> %pI4", 
@@ -106,7 +94,7 @@ static __always_inline __u8 dns_standard_query_pkt_check(unsigned char *dns_hdr,
     return 1;
 }
 
-static __always_inline __u32 domain_copy(unsigned char *ptr, domain_key_t *key, void *data_end) {
+static __always_inline __u32 domain_copy(unsigned char *ptr, domain_lpm_key_t *key, void *data_end) {
     if (unlikely(NULL == ptr || NULL == key || NULL == data_end)) return 0;
 
     __u32 len = 0;
@@ -133,7 +121,7 @@ static __always_inline __u32 domain_copy(unsigned char *ptr, domain_key_t *key, 
     return len;
 }
 
-static __always_inline void domain_reverse(domain_key_t *key, __u32 len) {
+static __always_inline void domain_reverse(domain_lpm_key_t *key, __u32 len) {
     if (unlikely(NULL == key || 0 == len)) return ;
 
     #pragma unroll
@@ -149,7 +137,7 @@ static __always_inline void domain_reverse(domain_key_t *key, __u32 len) {
     return ;
 }
 
-static __always_inline __u8 do_lookup_map(domain_key_t *key) {
+static __always_inline __u8 do_lookup_map(domain_lpm_key_t *key) {
     if (unlikely(NULL == key)) return 0;
 
     /* 命中缓存 */
@@ -180,9 +168,9 @@ static __always_inline __u8 is_domain_match(struct iphdr *ip, struct udphdr *udp
 
     /* 获取一个key结构用于查询 */
     __u32 kkey = 0;
-    domain_key_t *key = bpf_map_lookup_elem(&domain_map_key, &kkey);
+    domain_lpm_key_t *key = bpf_map_lookup_elem(&domain_map_key, &kkey);
     if (unlikely(!key)) return 0;
-    __builtin_memset(key, 0, sizeof(domain_key_t));
+    __builtin_memset(key, 0, sizeof(domain_lpm_key_t));
 
     /* 根据udp DNS 报文结构 [长度][内容][长度][内容] 拷贝有效报文到key中用于查询 */
     __u32 len = domain_copy(cursor, key, data_end);

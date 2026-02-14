@@ -6,15 +6,8 @@
  * Creation : 2026-01-20 21:39:23
 */
 
-#include <linux/ip.h>
-#include <linux/in.h>
-#include <linux/udp.h>
-#include <linux/bpf.h>
-#include <linux/pkt_cls.h>
-#include <linux/if_ether.h>
-#include <bpf/bpf_endian.h>
-#include <bpf/bpf_helpers.h>
 
+#define EBPF_KERNEL_PROJ
 #include "direct_path.h"
 
 /* 定义 LRU Hash Map 作为缓存 */
@@ -24,16 +17,6 @@ struct {
     __uint(key_size, 4);
     __uint(value_size, 8);
 } hotpath_cache SEC(".maps");
-
-typedef struct {
-    __u64 first_seen; // 第一次见到的纳秒时间戳
-    __u32 count;      // 累计包量
-} pre_val_t;
-
-typedef struct {
-    __u32 prefixlen;
-    __u32 ipv4;
-} lpm_key_t;
 
 /* 定义 LRU Hash Map 作为预缓存 */
 struct {
@@ -47,7 +30,7 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_LPM_TRIE);
     __uint(max_entries, BLKLIST_IP_MAP_SIZE);
-    __uint(key_size, sizeof(lpm_key_t));
+    __uint(key_size, sizeof(ip_lpm_key_t));
     __uint(value_size, 4);
     __uint(map_flags, BPF_F_NO_PREALLOC);
 } blklist_ip_map SEC(".maps");
@@ -56,7 +39,7 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_LPM_TRIE);
     __uint(max_entries, DIRECT_IP_MAP_SIZE);
-    __uint(key_size, sizeof(lpm_key_t));
+    __uint(key_size, sizeof(ip_lpm_key_t));
     __uint(value_size, 4);
     __uint(map_flags, BPF_F_NO_PREALLOC);
 } direct_ip_map SEC(".maps");
@@ -75,7 +58,7 @@ static __always_inline int is_private_ip(__u32 ip) {
 static __always_inline int do_lookup_map(__u32 *addr) {
     if (unlikely(NULL == addr)) return 0;
 
-    lpm_key_t key = {.prefixlen = 32, .ipv4 = *addr};
+    ip_lpm_key_t key = {.prefixlen = 32, .ipv4 = *addr};
 
     /* 检查黑名单 (源或目的在黑名单则不加速) */
     if (bpf_map_lookup_elem(&blklist_ip_map, &key)) return 0;

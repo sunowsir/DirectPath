@@ -6,38 +6,9 @@
  * Creation : 2026-02-05 14:08:37
 */
 
-#include <linux/stddef.h>
-#include <stdio.h>
-#include <errno.h>
-#include <ctype.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <arpa/inet.h>
 
-#include <bpf/bpf.h>
-#include <bpf/libbpf.h>
-
-
+#define EBPF_USER_PROJ
 #include "direct_path.h"
-
-#ifndef unlikely
-#define unlikely(x) __builtin_expect(!!(x), 0)
-#endif
-
-
-/* 定义与内核一致的 LPM Key 结构体 */
-
-typedef struct {
-    uint32_t prefixlen;
-    unsigned char domain[DOMAIN_MAX_LEN];
-} domain_lpm_key_t;
-
-typedef struct {
-    __u32 prefixlen;
-    __u32 ipv4;
-} ip_lpm_key_t;
 
 static __always_inline void del_head_space_char(char *line, char **res) {
     if (unlikely(NULL == line || NULL == res)) return ;
@@ -49,7 +20,6 @@ static __always_inline void del_head_space_char(char *line, char **res) {
 
     return ;
 }
-
 
 /**
  * DNS 编码并反转数据。

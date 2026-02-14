@@ -10,6 +10,38 @@
 #define DIRECT_PATH_H_H
 
 
+#ifdef EBPF_USER_PROJ
+#include <linux/stddef.h>
+#include <stdio.h>
+#include <errno.h>
+#include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <arpa/inet.h>
+
+#include <bpf/bpf.h>
+#include <bpf/libbpf.h>
+
+#ifndef unlikely
+#define unlikely(x) __builtin_expect(!!(x), 0)
+#endif
+
+#endif
+
+#ifdef EBPF_KERNEL_PROJ
+#include <linux/ip.h>
+#include <linux/in.h>
+#include <linux/udp.h>
+#include <linux/bpf.h>
+#include <linux/pkt_cls.h>
+#include <linux/if_ether.h>
+#include <bpf/bpf_endian.h>
+#include <bpf/bpf_helpers.h>
+#endif
+
+
 /* 各共享内存大小 */
 
 /* 国内IP缓存共享内存大小 */
@@ -84,7 +116,25 @@
 #define RULE_DOMAIN_KEYWORD             "DOMAIN-KEYWORD,"
 #define RULE_DOMAIN_SUFFIX              "DOMAIN-SUFFIX,"
 
-
 #define EXPORT_PROG_USAGE               "Usage: import [map path] [domain/ip] [rule file num] [file1] [file2] ..."
+
+
+/* TC PROG 预缓存LRU HASH key 结构 */
+typedef struct {
+    unsigned long long int first_seen; // 第一次见到的纳秒时间戳
+    unsigned int count;      // 累计包量
+} pre_val_t;
+
+/* LPM Key 结构体
+ * 用户程序与内核定义一致  */
+typedef struct {
+    unsigned int prefixlen;
+    unsigned char domain[DOMAIN_MAX_LEN];
+} __attribute__((packed)) domain_lpm_key_t;
+
+typedef struct {
+    unsigned int prefixlen;
+    unsigned int ipv4;
+} ip_lpm_key_t;
 
 #endif
