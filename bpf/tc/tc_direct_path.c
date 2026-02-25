@@ -11,38 +11,16 @@
 #include "direct_path.h"
 
 /* 定义 LRU Hash Map 作为缓存 */
-struct {
-    __uint(type, BPF_MAP_TYPE_LRU_HASH);
-    __uint(max_entries, CACHE_IP_MAP_SIZE);
-    __uint(key_size, 4);
-    __uint(value_size, 8);
-} hotpath_cache SEC(".maps");
+hotpath_cache_t hotpath_cache SEC(".maps");
 
 /* 定义 LRU Hash Map 作为预缓存 */
-struct {
-    __uint(type, BPF_MAP_TYPE_LRU_HASH);
-    __uint(max_entries, PRE_CACHE_IP_MAP_SIZE);
-    __uint(key_size, 4);
-    __uint(value_size, sizeof(pre_val_t)); 
-} pre_cache SEC(".maps");
+pre_cache_t pre_cache SEC(".maps");
 
 /* 黑名单 (LPM) */
-struct {
-    __uint(type, BPF_MAP_TYPE_LPM_TRIE);
-    __uint(max_entries, BLKLIST_IP_MAP_SIZE);
-    __uint(key_size, sizeof(ip_lpm_key_t));
-    __uint(value_size, 4);
-    __uint(map_flags, BPF_F_NO_PREALLOC);
-} blklist_ip_map SEC(".maps");
+blklist_ip_map_t blklist_ip_map SEC(".maps");
 
 /* 国内 IP 白名单 (LPM) */
-struct {
-    __uint(type, BPF_MAP_TYPE_LPM_TRIE);
-    __uint(max_entries, DIRECT_IP_MAP_SIZE);
-    __uint(key_size, sizeof(ip_lpm_key_t));
-    __uint(value_size, 4);
-    __uint(map_flags, BPF_F_NO_PREALLOC);
-} direct_ip_map SEC(".maps");
+direct_ip_map_t direct_ip_map SEC(".maps");
 
 
 /* 私网检查函数 */

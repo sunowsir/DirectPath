@@ -11,6 +11,7 @@
 
 
 #ifdef EBPF_USER_PROJ
+
 #include <linux/stddef.h>
 #include <stdio.h>
 #include <errno.h>
@@ -24,13 +25,10 @@
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
 
-#ifndef unlikely
-#define unlikely(x) __builtin_expect(!!(x), 0)
-#endif
-
 #endif
 
 #ifdef EBPF_KERNEL_PROJ
+
 #include <linux/ip.h>
 #include <linux/in.h>
 #include <linux/udp.h>
@@ -39,6 +37,7 @@
 #include <linux/if_ether.h>
 #include <bpf/bpf_endian.h>
 #include <bpf/bpf_helpers.h>
+
 #endif
 
 
@@ -136,5 +135,82 @@ typedef struct {
     unsigned int prefixlen;
     unsigned int ipv4;
 } ip_lpm_key_t;
+
+
+#ifdef EBPF_USER_PROJ
+
+#ifndef likely
+#define likely(x)      (__builtin_expect(!!(x), 1))
+#endif
+
+#ifndef unlikely
+#define unlikely(x)    (__builtin_expect(!!(x), 0))
+#endif
+
+#endif
+
+#ifdef EBPF_KERNEL_PROJ
+
+/* 定义 LRU Hash Map 作为缓存 */
+typedef struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, CACHE_IP_MAP_SIZE);
+    __uint(key_size, 4);
+    __uint(value_size, 8);
+} hotpath_cache_t;
+
+/* 定义 LRU Hash Map 作为预缓存 */
+typedef struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, PRE_CACHE_IP_MAP_SIZE);
+    __uint(key_size, 4);
+    __uint(value_size, sizeof(pre_val_t)); 
+} pre_cache_t;
+
+/* 黑名单 (LPM) */
+typedef struct {
+    __uint(type, BPF_MAP_TYPE_LPM_TRIE);
+    __uint(max_entries, BLKLIST_IP_MAP_SIZE);
+    __uint(key_size, sizeof(ip_lpm_key_t));
+    __uint(value_size, 4);
+    __uint(map_flags, BPF_F_NO_PREALLOC);
+} blklist_ip_map_t;
+
+/* 国内 IP 白名单 (LPM) */
+typedef struct {
+    __uint(type, BPF_MAP_TYPE_LPM_TRIE);
+    __uint(max_entries, DIRECT_IP_MAP_SIZE);
+    __uint(key_size, sizeof(ip_lpm_key_t));
+    __uint(value_size, 4);
+    __uint(map_flags, BPF_F_NO_PREALLOC);
+} direct_ip_map_t;
+
+/* 定义 LRU Hash Map 作为预缓存 */
+typedef struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, DOMAINPRE_MAP_SIZE);
+    __uint(key_size, sizeof(domain_lpm_key_t));
+    __uint(value_size, sizeof(__u32));
+} domain_cache_t;
+
+/* 定义国内域名白名单 */
+typedef struct {
+    __uint(type, BPF_MAP_TYPE_LPM_TRIE);
+    __uint(max_entries, DOMAIN_MAP_SIZE);
+    __type(key, domain_lpm_key_t);
+    __type(value, __u32);
+    __uint(map_flags, BPF_F_NO_PREALLOC);
+} domain_map_t;
+
+/* 定义数组，作为域名白名单key */
+typedef struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, __u32);
+    __type(value, domain_lpm_key_t);
+} domain_map_key_t;
+
+#endif
+
 
 #endif

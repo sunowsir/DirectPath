@@ -11,27 +11,13 @@
 #include "direct_path.h"
 
 /* 定义 LRU Hash Map 作为预缓存 */
-struct {
-    __uint(type, BPF_MAP_TYPE_LRU_HASH);
-    __uint(max_entries, DOMAINPRE_MAP_SIZE);
-    __uint(key_size, sizeof(domain_lpm_key_t));
-    __uint(value_size, sizeof(__u32));
-} domain_cache SEC(".maps");
+domain_cache_t domain_cache SEC(".maps");
 
-struct {
-    __uint(type, BPF_MAP_TYPE_LPM_TRIE);
-    __uint(max_entries, DOMAIN_MAP_SIZE);
-    __type(key, domain_lpm_key_t);
-    __type(value, __u32);
-    __uint(map_flags, BPF_F_NO_PREALLOC);
-} domain_map SEC(".maps");
+/* 定义国内域名白名单 */
+domain_map_t domain_map SEC(".maps");
 
-struct {
-    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-    __uint(max_entries, 1);
-    __type(key, __u32);
-    __type(value, domain_lpm_key_t);
-} domain_map_key SEC(".maps");
+/* 定义数组，作为域名白名单key */
+domain_map_key_t domain_map_key SEC(".maps");
 
 
 static __always_inline void error_debug_info(void *cursor, domain_lpm_key_t *key, struct iphdr *ip) {
