@@ -7,8 +7,7 @@
 */
 
 
-#define EBPF_KERNEL_PROJ
-#include "direct_path.h"
+#include "direct_path_kernel.h"
 
 /* 定义 LRU Hash Map 作为缓存 */
 hotpath_cache_t hotpath_cache SEC(".maps");

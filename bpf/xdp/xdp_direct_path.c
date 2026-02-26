@@ -7,8 +7,7 @@
 */
 
 
-#define EBPF_KERNEL_PROJ
-#include "direct_path.h"
+#include "direct_path_kernel.h"
 
 /* 定义 LRU Hash Map 作为预缓存 */
 domain_cache_t domain_cache SEC(".maps");

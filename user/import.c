@@ -6,9 +6,15 @@
  * Creation : 2026-02-05 14:08:37
 */
 
+#include <stdio.h>
+#include <errno.h>
+#include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
 
-#define EBPF_USER_PROJ
 #include "direct_path.h"
+#include "direct_path_user.h"
 
 static __always_inline void del_head_space_char(char *line, char **res) {
     if (unlikely(NULL == line || NULL == res)) return ;
