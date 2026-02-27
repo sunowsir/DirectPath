@@ -28,6 +28,8 @@
   3. 查看域名缓存利用率信息:`monitor_domain_cache.sh -a`
   4. 查看IP缓存内容: `monitor_hotpath_cache.sh`
   5. 查看域名缓存内容: `monitor_domain_cache.sh`
+  6. 查看`nft`规则：`nft -a list table inet bpf_accel`
+  7. 查看快转信息：`conntrack -L | grep 'OFFLOAD'`
 
 ## 计划/目标
   > 暂无单独包装为某个发行版软件包或者openwrt带界面的插件的计划
