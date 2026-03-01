@@ -74,7 +74,7 @@ static __always_inline __u8 dns_standard_query_pkt_check(unsigned char *dns_hdr,
     if (unlikely(qr != DNS_HEADER_QR_QUERY)) return 0;
 
     /* 非标准查询不处理 */
-    __u8 opcode = dns_hdr[2] >> 3 & 0x0F;
+    __u8 opcode = (dns_hdr[2] >> 3) & 0x0F;
     if (opcode != DNS_HEADER_OPCODE_STANDARD) return 0;
 
     return 1;
@@ -160,7 +160,7 @@ static __always_inline __u8 is_domain_match(struct iphdr *ip, struct udphdr *udp
     /* 根据udp DNS 报文结构 [长度][内容][长度][内容] 拷贝有效报文到key中用于查询 */
     __u32 len = domain_copy(cursor, key, data_end);
     if (unlikely(len == 0 || len > DOMAIN_MAX_LEN)) return 0;
-    key->prefixlen = (len & (DOMAIN_MAX_LEN - 1)) * 8;
+    key->prefixlen = Byte_to_bit(LIMIT_BY_MASK(len, (DOMAIN_MAX_LEN - 1)));
 
     /* 翻转key拷贝好的报文，因为用于保存国内域名名单的共享内存数据结构是LPM，前缀树 */
     domain_reverse(key, len);

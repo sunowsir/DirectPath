@@ -39,7 +39,7 @@ bool domain_encode_and_reverse(const char *domain, domain_lpm_key_t *key) {
     strncpy(buf, domain, sizeof(buf));
 
     char *saveptr = NULL;
-    char *token = strtok_r(buf, ".", &saveptr);
+    char *token = strtok_r(buf, DOMAIN_NAME_SEPARATOR, &saveptr);
     while (token != NULL) {
         size_t len = strlen(token);
         if (len == 0 || pos + len + 1 > DOMAIN_MAX_LEN) return false;
@@ -47,13 +47,13 @@ bool domain_encode_and_reverse(const char *domain, domain_lpm_key_t *key) {
         temp[pos++] = (uint8_t)len;
         memcpy(&temp[pos], token, len);
         pos += len;
-        token = strtok_r(NULL, ".", &saveptr);
+        token = strtok_r(NULL, DOMAIN_NAME_SEPARATOR, &saveptr);
     }
 
     if (0 == pos) return false;
 
     /* 设置前缀长度 (位) */
-    key->prefixlen = pos * 8;
+    key->prefixlen = Byte_to_bit(pos);
     /* 数据反转填充 */
     memset(key->domain, 0, DOMAIN_MAX_LEN);
     for (int i = 0; i < pos; i++) {
@@ -70,7 +70,7 @@ bool import_map_domain_by_line(char *line, int map_fd) {
     del_head_space_char(line, &start);
     if ('\0' == *start) return false;
 
-    if (strstr(start, "payload:") || line[0] == '#') return false;
+    if (strstr(start, "payload:") || line[0] == RULE_FILE_COMMIT_SEPARATOR) return false;
     if (!strstr(start, RULE_DOMAIN) && 
         !strstr(start, RULE_DOMAIN_KEYWORD) && 
         !strstr(start, RULE_DOMAIN_SUFFIX)) return false;
@@ -198,7 +198,7 @@ bool parse_cidr_to_lpm_key(char *cidr_raw, ip_lpm_key_t *key) {
 
 bool import_map_ip_by_line(char *line, int map_fd) {
     if (unlikely(NULL == line || map_fd <= 0)) return false;
-    if (line[0] == '#') return false;
+    if (line[0] == RULE_FILE_COMMIT_SEPARATOR) return false;
 
     char *start_line = strstr(line, RULE_IP);
     if (NULL == start_line) start_line = line;
