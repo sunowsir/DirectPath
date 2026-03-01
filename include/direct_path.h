@@ -11,11 +11,13 @@
 
 
 /* RFC3635 标准域名最大长度是255，
- * 然而eBPF 处理循环压力太大，几乎无法加载，减少为64 */
+ * 然而eBPF 处理循环压力太大，几乎无法加载，减少为86 */
 #define DOMAIN_MAX_LEN                  64
 
 /* 字节转比特 */
 #define Byte_to_bit(Byte)               (Byte * 8)
+/* 超过最大值，则使用最大值 */
+#define USE_LIMIT_MAX(x, max)           (((x) <= (max)) ? (x) : (max))
 
 
 /* TC PROG 预缓存LRU HASH key 结构 */
@@ -31,7 +33,7 @@ typedef struct {
 typedef struct {
     unsigned int prefixlen;
     unsigned char domain[DOMAIN_MAX_LEN];
-} __attribute__((packed)) domain_lpm_key_t;
+} domain_lpm_key_t;
 
 /* 国内IP白名单 LPM Key 结构体
  * 用户程序与内核定义一致  */

@@ -34,9 +34,10 @@ static __always_inline void del_head_space_char(char *line, char **res) {
 bool domain_encode_and_reverse(const char *domain, domain_lpm_key_t *key) {
     int pos = 0;
     char buf[FILE_LINE_MAXLEN] = {0};
-    uint8_t temp[DOMAIN_MAX_LEN] = {0};
+    uint8_t temp[DOMAIN_MAX_LEN + 1] = {0};
 
-    strncpy(buf, domain, sizeof(buf));
+    strncpy(buf, domain, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = 0;
 
     char *saveptr = NULL;
     char *token = strtok_r(buf, DOMAIN_NAME_SEPARATOR, &saveptr);
@@ -53,10 +54,11 @@ bool domain_encode_and_reverse(const char *domain, domain_lpm_key_t *key) {
     if (0 == pos) return false;
 
     /* 设置前缀长度 (位) */
-    key->prefixlen = Byte_to_bit(pos);
+    key->prefixlen = USE_LIMIT_MAX(Byte_to_bit(pos), Byte_to_bit(DOMAIN_MAX_LEN));
+    
     /* 数据反转填充 */
     memset(key->domain, 0, DOMAIN_MAX_LEN);
-    for (int i = 0; i < pos; i++) {
+    for (int i = 0; i < pos && i < DOMAIN_MAX_LEN; i++) {
         key->domain[i] = temp[pos - 1 - i];
     }
     return true;
@@ -96,7 +98,7 @@ bool import_map_domain_by_line(char *line, int map_fd) {
     uint32_t value = 1;
     int ret = bpf_map_update_elem(map_fd, &key, &value, BPF_ANY);
     if (ret) {
-        fprintf(stderr, "[ERROR] [%s] import failed: %d\n", line, ret);
+        fprintf(stderr, "[ERROR] [%s:%d] [%s] import failed: %d\n", __func__, __LINE__, line, ret);
         return false;
     }
 
