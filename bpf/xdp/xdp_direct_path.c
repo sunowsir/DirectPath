@@ -58,6 +58,7 @@ static __always_inline __u8 is_valid_dns_char(unsigned char c) {
     return 0;
 }
 
+/* 根据 RFC1035 对 DNS 报文进行检查 */
 static __always_inline __u8 dns_standard_query_pkt_check(unsigned char *dns_hdr, void *data_end) {
     if (unlikely(NULL == dns_hdr || NULL == data_end)) return 0;
 
@@ -133,7 +134,6 @@ static __always_inline __u8 do_lookup_map(domain_lpm_key_t *key) {
     }
 
     /* 域名库中查不到 */
-    // error_debug_info(cursor, key, ip);
     if (!bpf_map_lookup_elem(&domain_map, key)) return 0;
 
     /* 命中域名库，写入缓存 */
@@ -214,8 +214,7 @@ int xdp_direct_path(struct xdp_md *ctx) {
     if (ip->protocol != IPPROTO_UDP) return XDP_PASS;
 
     /* 如果源地址不是私网地址或者目的地址不是私网地址，则不予处理 */
-    if (!is_private_ip(ip->saddr) || !is_private_ip(ip->daddr))
-        return XDP_PASS;
+    if (!is_private_ip(ip->saddr) || !is_private_ip(ip->daddr)) return XDP_PASS;
 
     return do_lookup(ctx, ip, data_end);
 }

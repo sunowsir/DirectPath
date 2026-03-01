@@ -40,25 +40,25 @@ static __always_inline int do_lookup_map(__u32 *addr) {
     /* 检查黑名单 (源或目的在黑名单则不加速) */
     if (bpf_map_lookup_elem(&blklist_ip_map, &key)) return 0;
 
-    /* 查缓存一级白名单表之前检查地址是否是私网地址是为了防止缓存或国内IP白名单中混入私网地址 */
+    /* 查缓存一级白名单表之前检查地址是否是私网地址是为了防止缓存或国内IP白名单中混入私网地址 
+     * 这样设计的目的是，除了黑名单以外，其他任何的缓存名单混入了私网的地址，都不予处理
+     * */
     if (is_private_ip(*addr)) return 0;
 
-    /* 检查缓存  */
+    /* 检查缓存 */
     if (bpf_map_lookup_elem(&hotpath_cache, addr)) {
         return 1;
     }
 
-    /* 预存区逻辑 */
-    pre_val_t *pv = bpf_map_lookup_elem(&pre_cache, addr);
     __u64 now = bpf_ktime_get_ns();
 
-   if (pv) {
+    /* 检查预缓存 */
+    pre_val_t *pv = NULL;
+   if ((pv = bpf_map_lookup_elem(&pre_cache, addr)) != NULL) {
         /* 原子操作，包计数递增 */
         /* __sync_fetch_and_add 返回的是自增前的值，因此需要加1进行判断 */
-        __u32 c = __sync_fetch_and_add(&pv->count, 1) + 1;
-        
         /* 加入缓存，判定标准：见过超过 HOTPKG_NUM 个包，且距离第一次见面已经过了 HOTPKG_INV_TIME 秒 */
-        if ((c >= HOTPKG_NUM) && ((now - pv->first_seen) > HOTPKG_INV_TIME)) {
+        if (((__sync_fetch_and_add(&pv->count, 1) + 1) >= HOTPKG_NUM) && ((now - pv->first_seen) > HOTPKG_INV_TIME)) {
             bpf_map_update_elem(&hotpath_cache, addr, &now, BPF_ANY);
         }
 
@@ -85,16 +85,10 @@ static __always_inline int do_lookup(struct iphdr *iph) {
     if (is_private_ip(iph->saddr) && is_private_ip(iph->daddr)) return 0;
 
     /* 查询目的IP */
-    if (do_lookup_map(&(iph->daddr))) {
-        // bpf_trace_printk("Direct path match daddr: %pI4 -> %pI4\n", sizeof("Direct path match daddr: %pI4 -> %pI4\n"), &iph->saddr, &iph->daddr);
-        return 1;
-    }
+    if (do_lookup_map(&(iph->daddr))) return 1;
 
     /* 查询源IP */
-    if (do_lookup_map(&(iph->saddr))) {
-        // bpf_trace_printk("Direct path match saddr: %pI4 -> %pI4\n", sizeof("Direct path match daddr: %pI4 -> %pI4\n"), &iph->saddr, &iph->daddr);
-        return 1;
-    }
+    if (do_lookup_map(&(iph->saddr))) return 1;
 
     return 0;
 }
@@ -128,10 +122,6 @@ static __always_inline int do_lookup_dns(struct __sk_buff *skb, struct iphdr *ip
         bpf_l4_csum_replace(skb, offset, old_sport, new_sport, sizeof(new_sport));
     }
 
-    /* 调试打印可按需开启 */
-    // bpf_printk("DNS Egress Direct path session: %pI4 -> %pI4\n", &ip->saddr, &ip->daddr);
-    // bpf_printk("Egress AFTER: %d -> %d\n", bpf_ntohs(old_sport), bpf_ntohs(new_sport));
-
     return TC_ACT_OK;
 }
 
@@ -149,11 +139,7 @@ int tc_direct_path(struct __sk_buff *skb) {
     struct iphdr *iph = (void *)(eth + 1);
     if ((void *)(iph + 1) > data_end) return TC_ACT_OK;
 
-    if (do_lookup(iph)) {
-        skb->mark = bpf_htonl(DIRECT_MARK);
-        // 调试打印可按需开启
-        // bpf_trace_printk("Direct path session: %pI4 -> %pI4\n", sizeof("Direct path session: %pI4 -> %pI4\n"), &iph->saddr, &iph->daddr);
-    }
+    if (do_lookup(iph)) skb->mark = bpf_htonl(DIRECT_MARK);
 
     do_lookup_dns(skb, iph, data_end);
 
