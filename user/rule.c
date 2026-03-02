@@ -1,5 +1,5 @@
 /*
- * File     : import.c
+ * File     : rule.c
  * Author   : sun.wang
  * Mail     : sunowsir@163.com
  * Github   : github.com/sunowsir
@@ -13,7 +13,6 @@
 #include <string.h>
 #include <stdint.h>
 
-#include "direct_path.h"
 #include "direct_path_user.h"
 
 static __always_inline void del_head_space_char(char *line, char **res) {
@@ -265,11 +264,11 @@ int import(const char *import_type, const char *map_path, const char *rule_file)
     return ret;
 }
 
-int args_parse(int argc, char **argv) {
+int import_args_parse(int argc, char **argv) {
     if (argc < IMPORT_ARGS_MIN_VALID_NUM) 
         return import(IMPORT_TYPE_DOMAIN, IMPORT_DEFULE_MAP, IMPORT_DEFAULT_RULE_FILE);
 
-    for (int i = 1; i < argc; i++) {
+    for (int i = 2; i < argc; i++) {
         const char *map_path = argv[i++];
         if (NULL == map_path) {
             perror("[ERROR] 参数错误 map_path，" EXPORT_PROG_USAGE);
@@ -316,6 +315,6 @@ int args_parse(int argc, char **argv) {
     return 0;
 }
 
-int main(int argc, char **argv) {
-    return args_parse(argc, argv);
+int rule_main(int argc, char **argv) {
+    return import_args_parse(argc, argv);
 }

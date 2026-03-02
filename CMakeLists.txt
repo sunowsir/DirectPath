@@ -32,17 +32,19 @@ endforeach()
 # -------------------
 # 用户态程序
 # -------------------
+set(USER_PROG direct_path)
+
 file(GLOB USER_SRC "user/*.c")
-add_executable(import ${USER_SRC})
+add_executable(${USER_PROG} ${USER_SRC})
 
 # Include directories
-target_include_directories(import PRIVATE
+target_include_directories(${USER_PROG} PRIVATE
     include
     ${OPENWRT_TOOLCHAIN_DIR}/usr/include       # Toolchain 头文件 (linux/bpf.h)
     ${OPENWRT_TARGET_DIR}/usr/include          # Target 头文件 (libbpf.h)
 )
 
-target_include_directories(import PRIVATE
+target_include_directories(${USER_PROG} PRIVATE
     include
     ${OPENWRT_TARGET_DIR}/usr/include
     ${OPENWRT_TOOLCHAIN_DIR}/usr/include
@@ -51,13 +53,13 @@ target_include_directories(import PRIVATE
 # rpath-link libintl
 set(INTL_DIR "${OPENWRT_TARGET_DIR}/usr/lib/libintl-full/lib")
 if(EXISTS "${INTL_DIR}")
-    target_link_directories(import PRIVATE ${INTL_DIR})
-    target_link_options(import PRIVATE "LINKER:-rpath-link=${INTL_DIR}")
+    target_link_directories(${USER_PROG} PRIVATE ${INTL_DIR})
+    target_link_options(${USER_PROG} PRIVATE "LINKER:-rpath-link=${INTL_DIR}")
 endif()
 
 # 链接库
-target_link_libraries(import PRIVATE bpf z)
+target_link_libraries(${USER_PROG} PRIVATE bpf nftables z)
 
 # 用户态依赖 BPF 编译完成
-add_dependencies(import ${BPF_TARGETS})
+add_dependencies(${USER_PROG} ${BPF_TARGETS})
 
