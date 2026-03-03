@@ -9,6 +9,15 @@
 #ifndef DIRECT_PATH_LOAD_H_H
 #define DIRECT_PATH_LOAD_H_H
 
+/* 安装所有 */
+#define LOAD_ARGS_INSTALL          "install"
+
+/* 卸载所有 */
+#define LOAD_ARGS_UNINSTALL        "uninstall"
+
+/* load 参数最少数量 */
+#define LOAD_ARGS_MIN_NUM           2
+
 int load_main(int argc, char **argv);
 
 #endif

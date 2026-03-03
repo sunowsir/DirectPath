@@ -21,7 +21,7 @@
 #define NFT_CMD_BUF_MAXLEN              2048
 
 bool setup_nft_rules();
-void cleanup_nft_rules();
+bool cleanup_nft_rules();
 
 #endif
 

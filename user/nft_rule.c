@@ -13,9 +13,9 @@
 
 /* * 清理函数：对应脚本中的 clean_all 部分
  */
-void cleanup_nft_rules() {
+bool cleanup_nft_rules() {
     struct nft_ctx *ctx = nft_ctx_new(NFT_CTX_DEFAULT);
-    if (!ctx) return ;
+    if (!ctx) return false;
 
     /* 抑制输出，我们只关心返回值，不想让查询失败的错误信息污染屏幕 */
     nft_ctx_buffer_error(ctx);
@@ -26,7 +26,7 @@ void cleanup_nft_rules() {
 
     printf("[INFO] nftables 规则已清理\n");
 
-    return ;
+    return true;
 }
 
 /* * 动态构造并执行 nft 命令

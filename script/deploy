@@ -41,7 +41,7 @@ function import_rules () {
 }
 
 function main() {
-    ./direct_path load || exit $?
+    ./direct_path load install || exit $?
     import_rules
 }
 

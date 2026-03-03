@@ -18,15 +18,15 @@
 
 ## 恢复环境
 
-  1. `./deploy_direct_path.sh stop`
+  1. `./direct_path load uninstall`
   
 ## 调试信息 
 
   1. 查看调试信息，可将代码中的打印打开，然后在`openwrt`设备上执行：`cat /sys/kernel/debug/tracing/trace_pipe`
-  2. 查看IP缓存利用率信息:`monitor_hotpath_cache.sh -a`
-  3. 查看域名缓存利用率信息:`monitor_domain_cache.sh -a`
-  4. 查看IP缓存内容: `monitor_hotpath_cache.sh`
-  5. 查看域名缓存内容: `monitor_domain_cache.sh`
+  2. 查看IP缓存利用率信息:`monitor_ip_cache -a`
+  3. 查看域名缓存利用率信息:`monitor_domain_cache -a`
+  4. 查看IP缓存内容: `monitor_ip_cache.sh`
+  5. 查看域名缓存内容: `monitor_domain_cache`
   6. 查看`nft`规则：`nft -a list table inet bpf_accel`
   7. 查看快转信息：`conntrack -L | grep 'OFFLOAD'`
 

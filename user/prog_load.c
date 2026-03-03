@@ -45,10 +45,8 @@ bool load_and_pin_bpf_prog(const char *prog_file, const char *bpf_dir, const cha
             }
             // bpf_map__reuse_fd 会内部 dup 这个 FD，所以我们可以关闭本地的
             close(pinned_fd); 
-            printf("[DEBUG] 已成功复用已固定的 Map: %s\n", map_name);
         } else {
             // 如果文件不存在，libbpf 会按默认流程创建新 Map (可选)
-            printf("[DEBUG] 未发现已固定的 Map %s，将由 libbpf 创建新实例\n", map_name);
         }
     }
     /* --- Map 复用逻辑结束 --- */
