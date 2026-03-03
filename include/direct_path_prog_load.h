@@ -11,6 +11,8 @@
 
 #include <stdbool.h>
 
+#define MAP_PIN_PATH_MAXLEN         256
+
 bool load_and_pin_bpf_all();
 
 #endif

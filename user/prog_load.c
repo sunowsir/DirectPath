@@ -17,6 +17,7 @@
 #include <linux/pkt_sched.h>
 
 #include "direct_path_user.h"
+#include "direct_path_prog_load.h"
 
 bool load_and_pin_bpf_prog(const char *prog_file, const char *bpf_dir, const char *pin_dir, 
     struct bpf_object **obj, int *prog_fd) {
@@ -24,32 +25,28 @@ bool load_and_pin_bpf_prog(const char *prog_file, const char *bpf_dir, const cha
     *obj = bpf_object__open_file(prog_file, NULL);
     if (libbpf_get_error(*obj)) return false;
 
-    /* --- 核心修复：Map 复用逻辑开始 --- */
+    /* Map 复用 */
     struct bpf_map *map;
     bpf_object__for_each_map(map, *obj) {
         const char *map_name = bpf_map__name(map);
-        char map_pin_path[256];
+        char map_pin_path[MAP_PIN_PATH_MAXLEN] = {0};
         
-        // 构造对应的 Map 固定路径，例如 /sys/fs/bpf/tc_progs/hotpath_cache
-        // 注意：这里要确保 TC_BPF_DIR 和 map_name 拼接正确
-        snprintf(map_pin_path, sizeof(map_pin_path), "%s/%s", bpf_dir, map_name);
+        /* 构造对应的 Map 固定路径 */
+        snprintf(map_pin_path, sizeof(map_pin_path) - 1, "%s/%s", bpf_dir, map_name);
 
-        // 尝试获取已经存在的 Map FD
+        /* 尝试获取已经存在的 Map FD */
         int pinned_fd = bpf_obj_get(map_pin_path);
-        if (pinned_fd >= 0) {
-            // 关键：告诉 libbpf，这个 map 不要创建新的，直接用这个 FD
-            if (bpf_map__reuse_fd(map, pinned_fd)) {
-                fprintf(stderr, "[ERROR] 无法复用 Map %s\n", map_name);
-                close(pinned_fd);
-                return false;
-            }
-            // bpf_map__reuse_fd 会内部 dup 这个 FD，所以我们可以关闭本地的
-            close(pinned_fd); 
-        } else {
-            // 如果文件不存在，libbpf 会按默认流程创建新 Map (可选)
+        if (pinned_fd < 0) continue;
+
+        /* 告诉 libbpf 这个 map 不要创建新的，直接用这个 FD */
+        if (bpf_map__reuse_fd(map, pinned_fd)) {
+            fprintf(stderr, "[ERROR] 无法复用 Map %s\n", map_name);
+            close(pinned_fd);
+            return false;
         }
+
+        close(pinned_fd); 
     }
-    /* --- Map 复用逻辑结束 --- */
     
     if (bpf_object__load(*obj)) return false;
 
