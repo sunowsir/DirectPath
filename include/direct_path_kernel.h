@@ -41,6 +41,8 @@
 #define NORMAOL_DNS_PORT                53
 /* 内网国内专用DNS服务器服务端口 */
 #define DIRECT_DNS_SERVER_PORT          15301
+/* 内网代理专用DNS服务器服务端口 */
+#define PROXY_DNS_SERVER_PORT           15302
 /* 总计收发20个包，且距离最开始的数据包的时间超过了 10秒，才被准入到缓存中 */
 #define HOTPKG_NUM                      20
 #define HOTPKG_INV_TIME                 10000000000ULL

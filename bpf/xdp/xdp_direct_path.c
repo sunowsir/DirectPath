@@ -172,11 +172,10 @@ static __always_inline __u8 is_domain_match(struct iphdr *ip, struct udphdr *udp
 }
 
 /* 修改端口 */
-static __always_inline void dns_pkt_dport_modify(struct udphdr *udp) {
+static __always_inline void dns_pkt_dport_modify(struct udphdr *udp, __be16 new_dport) {
     if (unlikely(NULL == udp)) return ;
 
     __be16 old_dport = udp->dest;
-    __be16 new_dport = bpf_htons(DIRECT_DNS_SERVER_PORT);
     udp->dest = new_dport;
     udp_update_csum(old_dport, new_dport, &udp->check);
 
@@ -191,10 +190,11 @@ static __always_inline int do_lookup(struct xdp_md *ctx, struct iphdr *ip, void 
     if (unlikely((void *)(udp + 1) > data_end)) return XDP_PASS;
     if (bpf_htons(NORMAOL_DNS_PORT) != udp->dest) return XDP_PASS;
 
-    if (!is_domain_match(ip, udp, data_end)) return XDP_PASS;
-
     /* 修改端口 */
-    dns_pkt_dport_modify(udp);
+    if (!is_domain_match(ip, udp, data_end)) 
+        dns_pkt_dport_modify(udp, bpf_htons(PROXY_DNS_SERVER_PORT));
+    else 
+        dns_pkt_dport_modify(udp, bpf_htons(DIRECT_DNS_SERVER_PORT));
 
     return XDP_PASS;
 }

@@ -1,11 +1,8 @@
 # DirectPath 加速引擎
-> DirectPath加速引擎包括：
-> 1. 直连流量加速引擎：利用ebpf实现国内IP流量快速转发
-> 2. 直连DNS加速引擎：利用ebpf实现国内域名DNS请求不受openclash等软件(暂时只支持openclash)的控制直达openwrt上部署的dns服务器
+> 直连DNS加速引擎：利用ebpf实现国内域名DNS请求不受openclash等软件的控制直达openwrt上部署的dns服务器
 > 
 
 ## 部署方法
-  > 若执`check_ip_cache.sh`发现IP缓存急速上涨并爆满，大概率是内网的P2P或PCDN服务导致
 
   1. `git clone https://github.com/sunowsir/DirectPath.git && cd DirectPath`
   2. 设置环境变量: `export OPENWRT_SDK=openwrt源码编译目录`、`export STAGING_DIR=${OPENWRT_SDK}/staging_dir`
@@ -14,13 +11,7 @@
         2. `cmake --build build -j`
   4. 拷贝编译产物至openwrt: `scp ./build/bpf/*.o ./build/direct_path root@openwrt地址:~/path/to/`
   5. 拷贝其他脚本至openwrt: `scp ./script/* root@openwrt地址:~/path/to/`
-  6. 部署: 执行`./deploy`, 然后在openclash开发者选项中增加如下内容并保存应用: 
-     ```bash 
-     nft "insert rule inet fw4 openclash index 0 meta mark & 0xff000000 == 0x88000000 counter return"
-     nft "insert rule inet fw4 openclash_mangle index 0 meta mark & 0xff000000 == 0x88000000 counter return"
-     nft "insert rule inet fw4 openclash_mangle_output index 0 meta mark & 0xff000000 == 0x88000000 counter return"
-     nft "insert rule inet fw4 openclash_output index 0 meta mark & 0xff000000 == 0x88000000 counter return"
-     ```
+  6. 部署: 执行`./deploy`
 
 ## 恢复环境
 
@@ -29,12 +20,8 @@
 ## 调试信息 
 
   1. 查看调试信息，可将代码中的打印打开，然后在`openwrt`设备上执行：`cat /sys/kernel/debug/tracing/trace_pipe`
-  2. 查看IP缓存利用率信息:`monitor_ip_cache -a`
   3. 查看域名缓存利用率信息:`monitor_domain_cache -a`
-  4. 查看IP缓存内容: `monitor_ip_cache.sh`
   5. 查看域名缓存内容: `monitor_domain_cache`
-  6. 查看`nft`规则：`nft -a list table inet bpf_accel`
-  7. 查看快转信息：`conntrack -L | grep 'OFFLOAD'`
 
 ## :warning: 声明
 

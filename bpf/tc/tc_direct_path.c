@@ -96,17 +96,20 @@ static __always_inline int do_lookup(struct iphdr *iph) {
 static __always_inline int do_lookup_dns(struct __sk_buff *skb, struct iphdr *ip, void *data_end) {
     if (unlikely(NULL == skb || NULL == ip || NULL == data_end)) return TC_ACT_OK;
 
+    /* 如果源地址不是私网地址或者目的地址不是私网地址，则不予处理 */
     if (!is_private_ip(ip->saddr) || !is_private_ip(ip->daddr)) {
         return TC_ACT_OK;
     }
 
+    /* 只处理UDP的DNS请求 */
     if (unlikely(ip->protocol != IPPROTO_UDP)) return TC_ACT_OK;
 
     struct udphdr *udp = (void *)ip + sizeof(*ip);
     if (unlikely((void *)udp + sizeof(*udp) > data_end)) return TC_ACT_OK;
     if (unlikely(NULL == udp)) return TC_ACT_OK;
 
-    if (udp->source != bpf_htons(DIRECT_DNS_SERVER_PORT)) return TC_ACT_OK;
+    if (udp->source != bpf_htons(DIRECT_DNS_SERVER_PORT) &&
+        udp->source != bpf_htons(PROXY_DNS_SERVER_PORT)) return TC_ACT_OK;
 
     /* 回程包 */
     __u16 check_val = udp->check;
