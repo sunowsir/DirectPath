@@ -1,7 +1,7 @@
 # DirectPath 加速引擎
 > DirectPath加速引擎包括：
 > 1. 直连流量加速引擎：利用ebpf实现国内IP流量快速转发
-> 2. 直连DNS加速引擎：利用ebpf实现国内域名DNS请求不受openclash等软件的控制直达openwrt上部署的dns服务器
+> 2. 直连DNS加速引擎：利用ebpf实现国内域名DNS请求不受openclash等软件(暂时只支持openclash)的控制直达openwrt上部署的dns服务器
 > 
 
 ## 部署方法
@@ -14,7 +14,13 @@
         2. `cmake --build build -j`
   4. 拷贝编译产物至openwrt: `scp ./build/bpf/*.o ./build/direct_path root@openwrt地址:~/path/to/`
   5. 拷贝其他脚本至openwrt: `scp ./script/* root@openwrt地址:~/path/to/`
-  6. 一键部署: `./deploy`
+  6. 部署: 执行`./deploy`, 然后在openclash开发者选项中增加如下内容并保存应用: 
+     ```bash 
+        nft "insert rule inet fw4 openclash index 0 meta mark & 0xff000000 == 0x88000000 counter return"
+        nft "insert rule inet fw4 openclash_mangle index 0 meta mark & 0xff000000 == 0x88000000 counter return"
+        nft "insert rule inet fw4 openclash_mangle_output index 0 meta mark & 0xff000000 == 0x88000000 counter return"
+        nft "insert rule inet fw4 openclash_output index 0 meta mark & 0xff000000 == 0x88000000 counter return"
+     ```
 
 ## 恢复环境
 
@@ -29,10 +35,6 @@
   5. 查看域名缓存内容: `monitor_domain_cache`
   6. 查看`nft`规则：`nft -a list table inet bpf_accel`
   7. 查看快转信息：`conntrack -L | grep 'OFFLOAD'`
-
-## 计划/目标
-
-  1. 暂无，随缘
 
 ## :warning: 声明
 

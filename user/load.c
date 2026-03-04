@@ -12,7 +12,6 @@
 
 #include "direct_path_prepare.h"
 #include "direct_path_prog_load.h"
-#include "direct_path_nft_rule.h"
 
 #include "direct_path_load.h"
 
@@ -25,18 +24,11 @@ int load_install(int argc, char **argv) {
 
     if(!load_and_pin_bpf_all()) return false;
 
-    if (!setup_nft_rules()) {
-        cleanup_nft_rules();
-        fprintf(stderr, "[ERRO] setup_nft_rules failed\n");
-        return -1;
-    }
-
     return 0;
 }
 
 int load_uninstall(int argc, char **argv) {
     if (!umount_map_all()) return -1;
-    if (!cleanup_nft_rules()) return -1;
     return 0;
 }
 
