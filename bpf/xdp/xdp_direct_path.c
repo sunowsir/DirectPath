@@ -238,7 +238,7 @@ static __always_inline int do_lookup(struct xdp_md *ctx, void *l4_hdr, struct ip
             if (bpf_htons(NORMAOL_DNS_PORT) != udp->dest) return XDP_PASS;
 
             if (is_domain_match_udp(ip, udp, data_end)) udp_dns_pkt_dport_modify(udp, bpf_htons(DIRECT_DNS_SERVER_PORT));
-            // else udp_dns_pkt_dport_modify(udp, bpf_htons(PROXY_DNS_SERVER_PORT));
+            else udp_dns_pkt_dport_modify(udp, bpf_htons(PROXY_DNS_SERVER_PORT));
         } break;
         case IPPROTO_TCP: {
             struct tcphdr *tcp = (struct tcphdr *)l4_hdr;
@@ -246,7 +246,7 @@ static __always_inline int do_lookup(struct xdp_md *ctx, void *l4_hdr, struct ip
             if (bpf_htons(NORMAOL_DNS_PORT) != tcp->dest) return XDP_PASS;
 
             if (is_domain_match_tcp(ip, tcp, data_end)) tcp_dns_pkt_dport_modify(tcp, bpf_htons(DIRECT_DNS_SERVER_PORT));
-            // else tcp_dns_pkt_dport_modify(tcp, bpf_htons(PROXY_DNS_SERVER_PORT));
+            else tcp_dns_pkt_dport_modify(tcp, bpf_htons(PROXY_DNS_SERVER_PORT));
         } break;
         default: return XDP_PASS;
     }

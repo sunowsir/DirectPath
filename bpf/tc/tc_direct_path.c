@@ -141,18 +141,16 @@ static __always_inline int do_lookup_dns(struct __sk_buff *skb, void *l4_hdr, st
         case IPPROTO_UDP: {
             struct udphdr *udp = (struct udphdr *)l4_hdr;
             if ((void *)udp + sizeof(struct udphdr) > data_end) return TC_ACT_OK;
-            // if (udp->source != bpf_htons(DIRECT_DNS_SERVER_PORT) &&
-            //     udp->source != bpf_htons(PROXY_DNS_SERVER_PORT)) return TC_ACT_OK;
-            if (udp->source != bpf_htons(DIRECT_DNS_SERVER_PORT)) return TC_ACT_OK;
+            if (udp->source != bpf_htons(DIRECT_DNS_SERVER_PORT) &&
+                udp->source != bpf_htons(PROXY_DNS_SERVER_PORT)) return TC_ACT_OK;
 
             udp_dns_pkt_dport_modify(skb, udp);
         } break;
         case IPPROTO_TCP: {
             struct tcphdr *tcp = (struct tcphdr *)l4_hdr;
             if ((void *)tcp + sizeof(struct tcphdr) > data_end) return TC_ACT_OK;
-            // if (tcp->source != bpf_htons(DIRECT_DNS_SERVER_PORT) &&
-            //     tcp->source != bpf_htons(PROXY_DNS_SERVER_PORT)) return TC_ACT_OK;
-            if (tcp->source != bpf_htons(DIRECT_DNS_SERVER_PORT)) return TC_ACT_OK;
+            if (tcp->source != bpf_htons(DIRECT_DNS_SERVER_PORT) &&
+                tcp->source != bpf_htons(PROXY_DNS_SERVER_PORT)) return TC_ACT_OK;
 
             tcp_dns_pkt_dport_modify(skb, tcp);
         } break;
